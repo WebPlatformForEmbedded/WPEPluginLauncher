@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.7)
 include(${CMAKE_SYSROOT}${CMAKE_INSTALL_PREFIX}/include/cmake/tools.cmake)
 
 set(PLUGIN_NAME Launcher)
+set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
 
 message("Setting up ${PLUGIN_NAME}")
 
@@ -13,14 +14,11 @@ set(PLUGIN_SOURCES
     Launcher.cpp
     Module.cpp)
 
-# How, using regular CMake (PLUGIN_SUPPORT_DEFINITIONS) can we tell fuck CMake to inherit this.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-
 # Library definition section
-set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
 add_library(${MODULE_NAME} SHARED ${PLUGIN_SOURCES})
-include_directories(${PLUGIN_SUPPORT_INCLUDE_DIR})
-target_link_libraries(${MODULE_NAME} ${PLUGIN_SUPPORT_LIBRARIES})
+add_compiler_flags(${MODULE_NAME} "${PLUGINS_DEFINITIONS}")
+include_directories(${PLUGINS_INCLUDE_DIR})
+target_link_libraries(${MODULE_NAME} ${PLUGINS_LIBRARIES})
 
 # Library installation section
 string(TOLOWER ${NAMESPACE} STORAGENAME)
