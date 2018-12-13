@@ -37,7 +37,7 @@ private:
             Info(const uint8_t buffer[], const uint16_t length) 
                 : _status(PROC_CN_MCAST_IGNORE) {
                 if (Ingest(buffer, length) == false) {
-                    printf("This failed !!!!\n");
+                    TRACE_L1("This failed !!!!\n");
                     _info.what = proc_event::PROC_EVENT_NONE;
                 }
             }
@@ -129,7 +129,7 @@ private:
 
         public:
             Channel(ProcessObserver& parent) 
-                : Core::SocketNetlink(Core::NodeId(NETLINK_CONNECTOR, ::getpid(), CN_IDX_PROC))
+                : Core::SocketNetlink(Core::NodeId(NETLINK_CONNECTOR, 0, CN_IDX_PROC))
                 , _parent(parent) {
             }
             virtual ~Channel() {
@@ -179,37 +179,34 @@ private:
             auto found = std::find(_callbacks.begin(), _callbacks.end(), observer);
             ASSERT(found != _callbacks.end());
             _callbacks.erase(found); 
-            if (_callbacks.empty())
+            if (_callbacks.empty()) {
                 Close();
+            }
             _adminLock.Unlock();
         }
 
     private:
         bool Open() {
-            bool succeeded = (_channel.IsOpen() == true);
+            bool succeeded = true;
+            ASSERT (_channel.IsOpen() == false);
 
-            if ((succeeded == false) && (_channel.Open(Core::infinite) == Core::ERROR_NONE)) {
+            if (_channel.Open(Core::infinite) == Core::ERROR_NONE) {
                 Info message(true);
 
                 if (_channel.Send(message, Core::infinite) != Core::ERROR_NONE) {
                     _channel.Close(Core::infinite);
-                }
-                else {
-                    succeeded = true;
+                    succeeded = false;
                 }
             }
             return (succeeded);
         }
         bool Close() {
-            bool succeeded = (_channel.IsOpen() == false);
-
-            if (succeeded == false) {
+            if (_channel.IsOpen() == true) {
 
                 Info message(false);
                 _channel.Send (message, Core::infinite);
-                _channel.Close(Core::infinite);
-                succeeded = true;
             }
+            _channel.Close(Core::infinite);
 
             return (Core::ERROR_NONE);
         }
@@ -260,11 +257,16 @@ private:
         Launcher& _parent;
     };
 
+public:
     class Config : public Core::JSON::Container {
     private:
+        Config(const Config&) = delete;
+        Config& operator=(const Config&) = delete;
+
+    public:
         class Parameter : public Core::JSON::Container {
         private:
-            Parameter& operator=(const Parameter&);
+            Parameter& operator=(const Parameter&) = delete;
 
         public:
             Parameter()
@@ -289,17 +291,16 @@ private:
             Core::JSON::String Value;
         };
 
-        Config(const Config&);
-        Config& operator=(const Config&);
-
     public:
         Config()
             : Core::JSON::Container()
             , Command()
             , Parameters()
+            , CloseTime(3)
         {
             Add(_T("command"), &Command);
             Add(_T("parameters"), &Parameters);
+            Add(_T("closetime"), &CloseTime);
         }
         ~Config()
         {
@@ -308,6 +309,7 @@ private:
     public:
         Core::JSON::String Command;
         Core::JSON::ArrayType<Parameter> Parameters;
+        Core::JSON::DecUInt8 CloseTime;
     };
 
 public:
@@ -317,6 +319,8 @@ public:
     Launcher()
         : _service(nullptr)
         , _process(false)
+        , _pid(0)
+        , _closeTime(0)
         , _notification(this)
     {
     }
@@ -359,8 +363,11 @@ private:
 private:
     PluginHost::IShell* _service;
     Core::Process _process;
-    static ProcessObserver _observer;
+    uint32_t _pid;
+    uint8_t _closeTime;
     Core::Sink<Notification> _notification;
+
+    static ProcessObserver _observer;
 };
 
 } //namespace Plugin
