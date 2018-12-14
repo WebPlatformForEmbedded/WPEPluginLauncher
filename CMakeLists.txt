@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.7)
 
-include(${CMAKE_SYSROOT}${CMAKE_INSTALL_PREFIX}/include/cmake/tools.cmake)
+include($ENV{STAGING_DIR}${CMAKE_INSTALL_PREFIX}/include/cmake/tools.cmake)
 
 set(PLUGIN_NAME Launcher)
 set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
