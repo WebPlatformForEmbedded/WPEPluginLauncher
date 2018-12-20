@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.7)
 
-include($ENV{STAGING_DIR}${CMAKE_INSTALL_PREFIX}/include/cmake/tools.cmake)
+include(${CMAKE_SYSROOT}/usr/include/cmake/WPEFramework.cmake)
 
 set(PLUGIN_NAME Launcher)
 set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
@@ -24,4 +24,4 @@ target_link_libraries(${MODULE_NAME} ${PLUGINS_LIBRARIES})
 string(TOLOWER ${NAMESPACE} STORAGENAME)
 install(TARGETS ${MODULE_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/${STORAGENAME}/plugins)
 
-write_config(${PLUGIN_NAME} ${PLUGIN_NAME})
+write_config(${PLUGIN_NAME})
