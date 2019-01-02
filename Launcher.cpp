@@ -1,9 +1,68 @@
 #include "Launcher.h"
 
 namespace WPEFramework {
+
 namespace Plugin {
 
 SERVICE_REGISTRATION(Launcher, 1, 0);
+
+    class MemoryObserverImpl : public Exchange::IMemory {
+    private:
+        MemoryObserverImpl();
+        MemoryObserverImpl(const MemoryObserverImpl&);
+        MemoryObserverImpl& operator=(const MemoryObserverImpl&);
+
+    public:
+        MemoryObserverImpl(const uint32_t id)
+            : _main(id == 0 ? Core::ProcessInfo().Id() : id)
+            , _observable(false)
+        {
+        }
+        ~MemoryObserverImpl()
+        {
+        }
+
+    public:
+        virtual void Observe(const uint32_t pid)
+        {
+            if (pid == 0) {
+                _observable = false;
+             }
+             else {
+                _main = Core::ProcessInfo(pid);
+                _observable = true;
+             }
+        }
+        virtual uint64_t Resident() const
+        {
+            return (_observable == false ? 0 : _main.Resident());
+        }
+        virtual uint64_t Allocated() const
+        {
+            return (_observable == false ? 0 : _main.Allocated());
+        }
+        virtual uint64_t Shared() const
+        {
+            return (_observable == false ? 0 : _main.Shared());
+        }
+        virtual uint8_t Processes() const
+        {
+            return (IsOperational() ? 1 : 0);
+        }
+        virtual const bool IsOperational() const
+        {
+            return (_observable == false) || (_main.IsActive());
+        }
+
+        BEGIN_INTERFACE_MAP(MemoryObserverImpl)
+        INTERFACE_ENTRY(Exchange::IMemory)
+        END_INTERFACE_MAP
+
+    private:
+        Core::ProcessInfo _main;
+        bool _observable;
+    };
+
 
 /* static */ Launcher::ProcessObserver Launcher::_observer;
 
@@ -13,6 +72,7 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
     Config config;
 
     ASSERT(_service == nullptr);
+    ASSERT(_memory == nullptr);
 
     // Setup skip URL for right offset.
     _service = service;
@@ -45,6 +105,9 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
         _observer.Unregister(&_notification);
         message = _T("Could not spawn the requested app/script [") + config.Command.Value() + ']';
     }
+    else {
+        _memory = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(_pid);
+    }
 
     return (message);
 }
@@ -52,8 +115,14 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 /* virtual */ void Launcher::Deinitialize(PluginHost::IShell* service)
 {
     ASSERT(_service == service);
+    ASSERT(_memory != nullptr);
 
     _observer.Unregister(&_notification);
+
+    if (_memory != nullptr) {
+        _memory->Release();
+        _memory = nullptr;
+    }
 
     if (_process.IsActive() == true) {
         // First try a gentle touch....
@@ -94,5 +163,7 @@ void Launcher::Update(const ProcessObserver::Info& info)
     }
 }
 
+
 } //namespace Plugin
+
 } // namespace WPEFramework

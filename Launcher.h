@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Module.h"
+#include <interfaces/IMemory.h>
 #include <linux/cn_proc.h>
 
 namespace WPEFramework {
@@ -322,6 +323,7 @@ public:
         , _pid(0)
         , _closeTime(0)
         , _notification(this)
+        , _memory(nullptr)
     {
     }
 #ifdef __WIN32__
@@ -334,6 +336,7 @@ public:
 public:
     BEGIN_INTERFACE_MAP(Launcher)
         INTERFACE_ENTRY(PluginHost::IPlugin)
+        INTERFACE_AGGREGATE(Exchange::IMemory, _memory)
     END_INTERFACE_MAP
 
 public:
@@ -366,6 +369,7 @@ private:
     uint32_t _pid;
     uint8_t _closeTime;
     Core::Sink<Notification> _notification;
+    Exchange::IMemory* _memory;
 
     static ProcessObserver _observer;
 };
