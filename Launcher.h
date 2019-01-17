@@ -293,15 +293,44 @@ public:
         };
 
     public:
+        class Schedule : public Core::JSON::Container {
+        private:
+            Schedule& operator=(const Schedule&) = delete;
+
+        public:
+            Schedule()
+                : Core::JSON::Container()
+                , Time()
+                , Interval() {
+                Add(_T("time"), &Time);
+                Add(_T("interval"), &Interval);
+            }
+            Schedule(const Schedule& copy)
+                : Core::JSON::Container()
+                , Time(copy.Time)
+                , Interval(copy.Interval) {
+                Add(_T("time"), &Time);
+                Add(_T("interval"), &Interval);
+            }
+            ~Schedule() {
+            }
+        public:
+            Core::JSON::String Time;
+            Core::JSON::String Interval;
+        };
+
+    public:
         Config()
             : Core::JSON::Container()
             , Command()
             , Parameters()
             , CloseTime(3)
+            , ScheduleTime()
         {
             Add(_T("command"), &Command);
             Add(_T("parameters"), &Parameters);
             Add(_T("closetime"), &CloseTime);
+            Add(_T("schedule"), &ScheduleTime);
         }
         ~Config()
         {
@@ -311,6 +340,133 @@ public:
         Core::JSON::String Command;
         Core::JSON::ArrayType<Parameter> Parameters;
         Core::JSON::DecUInt8 CloseTime;
+        Schedule ScheduleTime;
+    };
+
+public:
+    class Time {
+        Time()
+        : _hour(0)
+        , _minute(0)
+        , _second(0)
+        {
+        }
+
+        ~Time ()
+        {
+        }
+
+        uint8_t Hour() { return _hour; }
+        uint8_t Minute() { return _minute; }
+        uint8_t Second() { return _second; }
+
+        bool Parse(string time) {
+            bool status = true;
+            printf("%s:%s:%d: time = %s\n", __FILE__, __func__, __LINE__, time.c_str());
+
+            //Get hours
+            uint8_t hour;
+            string hValue = Split(time, ":");
+            status = IsValidTime(hValue, hour, 24);
+            if (status == true) {
+
+               //Get minutes
+                uint8_t minute;
+                string mValue = Split(time, ".");
+                status = IsValidTime(mValue, minute, 60);
+                if (status == true) {
+
+                    //Store seconds
+                    uint8_t second;
+                    string sValue = time;
+                    status = IsValidTime(sValue, second, 60);
+                    if (status  == true) {
+
+                        //Check all the time components are still valid
+                        if ((hour > 0 && second > 0) && (minute == 0)) {
+                            status = false;
+                            TRACE(Trace::Information, (_T("Invalid time format")));
+                        }
+                        else { //Update time components
+                            _hour = hour;
+                            _minute = minute;
+                            _second = second;
+                        }
+                    }
+                    printf("%s:%s:%d: HH = %s MM = %s SS = %s\n", __FILE__, __func__, __LINE__, hValue.c_str(), mValue.c_str(), sValue.c_str());
+                }
+            }
+            return status;
+        }
+
+    private:
+        inline bool IsDigit(const string& str) {
+            return (str.find_first_not_of( "0123456789" ) == std::string::npos);
+        }
+
+        inline bool IsValidTime(const string& str, uint8_t& time, const uint8_t limit) {
+            bool status = true;
+            if (IsDigit(str)) {
+                int t = atoi(str.c_str());
+                if (t > limit || t < 0) {
+                    status = false;
+                    TRACE(Trace::Information, (_T("Invalid time  %s"), str.c_str()));
+                }
+                else {
+                    time = t;
+                }
+            }
+            else {
+                status = false;
+                TRACE(Trace::Information, (_T("Invalid time %s"), str.c_str()));
+            }
+            return status;
+        }
+
+        inline string Split(string& str, const string delimiter) {
+            string word;
+            size_t position = str.find(delimiter, 0);
+            if (position != string::npos) {
+                word = str.substr(0, position);
+                str = str.substr(word.size() + 1, str.size());
+            }
+            printf("%s:%s:%d: %s:     %s\n", __FILE__, __func__, __LINE__, word.c_str(), str.c_str());
+            return word;
+        }
+
+    private:
+        uint8_t _hour;
+        uint8_t _minute;
+        uint8_t _second;
+    };
+
+private:
+    class PeriodicSync : public Core::IDispatchType<void> {
+    private:
+        PeriodicSync() = delete;
+        PeriodicSync(const PeriodicSync&) = delete;
+        PeriodicSync& operator=(const PeriodicSync&) = delete;
+
+    public:
+        PeriodicSync(Launcher* launcher)
+            : _launcher(launcher)
+        {
+            ASSERT(launcher != nullptr);
+        }
+        ~PeriodicSync()
+        {
+        }
+
+    public:
+        virtual void Dispatch() override
+        {
+           Time time;
+            printf("%s:%s:%d: \n", __FILE__, __func__, __LINE__);
+            _launcher->LaunchJob(time);
+        }
+
+    private:
+        Launcher* _launcher;
     };
 
 public:
@@ -324,6 +480,11 @@ public:
         , _closeTime(0)
         , _notification(this)
         , _memory(nullptr)
+        , _time()
+        , _interval()
+        , _options("")
+        , _client(this)
+        , _activity(Core::ProxyType<PeriodicSync>::Create(_client))
     {
     }
 #ifdef __WIN32__
@@ -360,8 +521,11 @@ public:
     // to this plugin. This Metadata can be used by the MetData plugin to publish this information to the ouside world.
     string Information() const override; 
 
+    bool LaunchJob(Time time);
+
 private:
     void Update(const ProcessObserver::Info& info);
+    bool ScheduleJob(Time time);
 
 private:
     PluginHost::IShell* _service;
@@ -371,7 +535,14 @@ private:
     Core::Sink<Notification> _notification;
     Exchange::IMemory* _memory;
 
+    Time _time;
+    Time _interval;
+
     static ProcessObserver _observer;
+
+    Launcher* _client;
+    Core::Process::Options _options;
+    Core::ProxyType<Core::IDispatchType<void> > _activity;
 };
 
 } //namespace Plugin
