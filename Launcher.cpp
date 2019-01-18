@@ -80,7 +80,8 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
     config.FromString(_service->ConfigLine());
 
     _closeTime = (config.CloseTime.Value());
-    _options.Set(config.Command.Value().c_str());
+
+    static Core::Process::Options options(config.Command.Value().c_str());
     auto iter = config.Parameters.Elements();
 
     while (iter.Next() == true) {
@@ -88,14 +89,16 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
         if ((element.Option.IsSet() == true) && (element.Option.Value().empty() == false)) {
             if ((element.Value.IsSet() == true) && (element.Value.Value().empty() == false)) {
-                _options.Set(element.Option.Value(), element.Value.Value());
+                options.Set(element.Option.Value(), element.Value.Value());
             }
             else {
-                _options.Set(element.Option.Value());
+                options.Set(element.Option.Value());
             }
         }
     }
-    printf("%s:%s:%d \n", __FILE__, __func__, __LINE__);
+
+    _options = &options;
+
     if (config.ScheduleTime.IsSet() == true) {
 
         string time(config.ScheduleTime.Time.Value());
@@ -169,7 +172,7 @@ bool Launcher::LaunchJob(Time time)
 {
     bool status = true;
     if (time.Hour() == 0 && time.Minute() == 0 && time.Second() == 0) {
-        _process.Launch(_options, &_pid);
+        _process.Launch(*_options, &_pid);
 
         if (_pid == 0) {
             _observer.Unregister(&_notification);

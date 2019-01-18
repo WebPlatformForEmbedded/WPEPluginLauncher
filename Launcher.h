@@ -343,8 +343,8 @@ public:
         Schedule ScheduleTime;
     };
 
-public:
     class Time {
+public:
         Time()
         : _hour(0)
         , _minute(0)
@@ -399,7 +399,7 @@ public:
             return status;
         }
 
-    private:
+private:
         inline bool IsDigit(const string& str) {
             return (str.find_first_not_of( "0123456789" ) == std::string::npos);
         }
@@ -434,7 +434,7 @@ public:
             return word;
         }
 
-    private:
+private:
         uint8_t _hour;
         uint8_t _minute;
         uint8_t _second;
@@ -482,7 +482,7 @@ public:
         , _memory(nullptr)
         , _time()
         , _interval()
-        , _options("")
+        , _options(nullptr)
         , _client(this)
         , _activity(Core::ProxyType<PeriodicSync>::Create(_client))
     {
@@ -541,7 +541,7 @@ private:
     static ProcessObserver _observer;
 
     Launcher* _client;
-    Core::Process::Options _options;
+    Core::Process::Options* _options;
     Core::ProxyType<Core::IDispatchType<void> > _activity;
 };
 
