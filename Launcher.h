@@ -344,23 +344,41 @@ public:
     };
 
     class Time {
-public:
+    public:
         Time()
-        : _hour(0)
-        , _minute(0)
-        , _second(0)
+        : _hour(~0)
+        , _minute(~0)
+        , _second(~0)
         {
         }
-
+        Time(const string& time) 
+        : _hour(~0) 
+        , _minute(~0)
+        , _second(~0)
+        {
+            Parse(time);
+        }
+        Time(const Time& copy) 
+        : _hour(copy._hour) 
+        , _minute(copy._minute)
+        , _second(copy._second)
+        {
+        }
         ~Time ()
         {
         }
 
-        uint8_t Hour() { return _hour; }
-        uint8_t Minute() { return _minute; }
-        uint8_t Second() { return _second; }
+    public:
+        bool IsValid () const { return (HasSeconds() || HasMinutes() || HasHours()); }
+        bool HasHours() const { return (_hour != static_cast<uint8_t>(~0)); }
+        bool HasMinutes() const { return (_hour != static_cast<uint8_t>(~0)); }
+        bool HasSeconds() const { return (_hour != static_cast<uint8_t>(~0)); }
+        uint8_t Hour() const { return _hour; }
+        uint8_t Minute() const { return _minute; }
+        uint8_t Second() const { return _second; }
 
-        bool Parse(string time) {
+    private:
+        bool Parse(const string& time) {
             bool status = true;
             printf("%s:%s:%d: time = %s\n", __FILE__, __func__, __LINE__, time.c_str());
 
@@ -441,32 +459,63 @@ private:
     };
 
 private:
-    class PeriodicSync : public Core::IDispatchType<void> {
+    class Job: public Core::IDispatchType<void> {
     private:
-        PeriodicSync() = delete;
-        PeriodicSync(const PeriodicSync&) = delete;
-        PeriodicSync& operator=(const PeriodicSync&) = delete;
+        Job() = delete;
+        Job(const Job&) = delete;
+        Job& operator=(const Job&) = delete;
 
     public:
-        PeriodicSync(Launcher* launcher)
-            : _launcher(launcher)
+        Job(Config* config const Time& interval)
+            : _hasRun(false)
+            , _options(config->Command.Value().c_str())
         {
-            ASSERT(launcher != nullptr);
+            auto iter = config->Parameters.Elements();
+
+            while (iter.Next() == true) {
+                const Config::Parameter& element(iter.Current());
+
+                if ((element.Option.IsSet() == true) && (element.Option.Value().empty() == false)) {
+                    if ((element.Value.IsSet() == true) && (element.Value.Value().empty() == false)) {
+                        options.Set(element.Option.Value(), element.Value.Value());
+                    }
+                    else {
+                        options.Set(element.Option.Value());
+                    }
+                }
+            }
         }
-        ~PeriodicSync()
+        ~Job()
         {
         }
 
     public:
+        bool IsOperational() const {
+            return ((_hasRun == false) && (_interval.IsValid() == false));
+        }
+        Core::Process& Process() {
+            _return (_process);
+        }
         virtual void Dispatch() override
         {
+            _hasRun = true;
            Time time;
-            printf("%s:%s:%d: \n", __FILE__, __func__, __LINE__);
-            _launcher->LaunchJob(time);
+             // Check if the process is not active, no need to reschedule the same job againb.
+            if (_process.IsActive() == false) {
+                printf("%s:%s:%d: \n", __FILE__, __func__, __LINE__);
+                _process.Launch(_options);
+            }
+            if (_interval.IsValid() == true) {
+                // Reschedule our next launch point...
+                Workerpool::Instance().Schedule(this, CurrentTime + Interval);
+            }
         }
 
     private:
-        Launcher* _launcher;
+        bool _hasRun;
+        Core::Process::Options _options(config.Command.Value().c_str());
+        Core::Process _process;
+        Time _interval;
     };
 
 public:
@@ -484,7 +533,7 @@ public:
         , _interval()
         , _options(nullptr)
         , _client(this)
-        , _activity(Core::ProxyType<PeriodicSync>::Create(_client))
+        , _activity()
     {
     }
 #ifdef __WIN32__
@@ -521,28 +570,18 @@ public:
     // to this plugin. This Metadata can be used by the MetData plugin to publish this information to the ouside world.
     string Information() const override; 
 
-    bool LaunchJob(Time time);
-
 private:
     void Update(const ProcessObserver::Info& info);
-    bool ScheduleJob(Time time);
+    bool Execute();
 
 private:
     PluginHost::IShell* _service;
-    Core::Process _process;
     uint32_t _pid;
     uint8_t _closeTime;
     Core::Sink<Notification> _notification;
     Exchange::IMemory* _memory;
 
-    Time _time;
-    Time _interval;
-
     static ProcessObserver _observer;
-
-    Launcher* _client;
-    Core::Process::Options* _options;
-    Core::ProxyType<Core::IDispatchType<void> > _activity;
 };
 
 } //namespace Plugin

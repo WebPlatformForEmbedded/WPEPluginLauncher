@@ -68,6 +68,8 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
 /* virtual */ const string Launcher::Initialize(PluginHost::IShell* service)
 {
+    Time time;
+    Time interval;
     string message;
     Config config;
 
@@ -79,52 +81,42 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
     config.FromString(_service->ConfigLine());
 
-    _closeTime = (config.CloseTime.Value());
-
-    static Core::Process::Options options(config.Command.Value().c_str());
-    auto iter = config.Parameters.Elements();
-
-    while (iter.Next() == true) {
-        const Config::Parameter& element(iter.Current());
-
-        if ((element.Option.IsSet() == true) && (element.Option.Value().empty() == false)) {
-            if ((element.Value.IsSet() == true) && (element.Value.Value().empty() == false)) {
-                options.Set(element.Option.Value(), element.Value.Value());
-            }
-            else {
-                options.Set(element.Option.Value());
-            }
-        }
-    }
-
-    _options = &options;
-
     if (config.ScheduleTime.IsSet() == true) {
 
-        string time(config.ScheduleTime.Time.Value());
-        if (time.empty() == false) {
-            if (_time.Parse(time) != true) {
-                TRACE_L1("Time format is wrong");
-            }
+        time = Time(config.ScheduleTime.Time.Value());
+        if (time.IsValid() != true) {
+            SYSLOG(Trace::Warning, "Interval format is wrong");
         }
 
-        string interval(config.ScheduleTime.Interval.Value());
-        if (interval.empty() == false) {
-            if (_interval.Parse(interval) != true) {
-                TRACE_L1("Interval format is wrong");
-            }
+        interval = Time(config.ScheduleTime.Interval.Value());
+        if (interval.IsValid() != true) {
+            SYSLOG(Trace::Warning, "Interval format is wrong");
         }
         printf("%s:%s:%d %s %s\n", __FILE__, __func__, __LINE__, time.c_str(), interval.c_str());
     }
 
-    _observer.Register(&_notification);
+    _activity = Core::ProxyType<Job>::Create(&config, interval)
 
-    // Well if we where able to parse the parameters (if needed) we are ready to start it..
-    bool status = LaunchJob(_time);
-    if (status == false) {
-        _observer.Unregister(&_notification);
-        message = _T("Could not spawn the requested app/script [") + config.Command.Value() + ']';
+    if (_activity.IsValid() == true) {
+        if (_activity->IsOperational() == true) {
+            // Well if we where able to parse the parameters (if needed) we are ready to start it..
+            _observer.Register(&_notification);
+
+            if (_time.Valid() == true) {
+                Workerpool::Instance().Schedule(scheduledTime, _activity);
+            }
+            else {
+                Workerpool::Instance().Submit(_activity);
+            }
+        }
+        else {
+            message = _T("Could not parse the configuration for the job.");
+        }
     }
+    else {
+        message = _T("Could not create the job.");
+    }
+
     return (message);
 }
 
@@ -159,48 +151,24 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
     return (string());
 }
 
-bool Launcher::ScheduleJob(Time time)
-{
-    Core::Time scheduledTime(Core::Time::Now());
-    uint64_t timeValueToTrigger = ((time.Hour() * 60 + time.Minute()) * 60 + time.Second()) * 1000;
-
-    scheduledTime.Add(timeValueToTrigger);
-    PluginHost::WorkerPool::Instance().Schedule(scheduledTime, _activity);
-}
-
-bool Launcher::LaunchJob(Time time)
-{
-    bool status = true;
-    if (time.Hour() == 0 && time.Minute() == 0 && time.Second() == 0) {
-        _process.Launch(*_options, &_pid);
-
-        if (_pid == 0) {
-            _observer.Unregister(&_notification);
-            status = false;
-        }
-        else {
-            _memory = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(_pid);
-            ScheduleJob(_interval);
-        }
-    }
-    else {
-       ScheduleJob(_time);
-    }
-    return status;
-}
-
 void Launcher::Update(const ProcessObserver::Info& info)
 {
     // This can potentially be called on a socket thread, so the deactivation (wich in turn kills this object) must be done
     // on a seperate thread. Also make sure this call-stack can be unwound before we are totally destructed.
-    if (_pid == info.Id()) {
+    if ((_activity.IsValid() == true) && (_activity->Process.Pid() == info.Id()) {
 
         ASSERT(_service != nullptr);
 
         if (info.Event() == ProcessObserver::Info::EVENT_EXIT) {
         
             if ((info.ExitCode() & 0xFFFF) == 0) {
-                PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::AUTOMATIC));
+                // Only do this if we do not need a retrigger on an intervall.
+                if (_activity->IsOperational() == false) {
+                    PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::AUTOMATIC));
+                }
+                else {
+                    TRACE(Trace::Information, (_T("The process has run, and completed succefully.")));
+                }
             }
             else {
                 PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
