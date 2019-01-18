@@ -370,9 +370,9 @@ public:
 
     public:
         bool IsValid () const { return (HasSeconds() || HasMinutes() || HasHours()); }
-        bool HasHours() const { return (_hour != static_cast<uint8_t>(~0)); }
-        bool HasMinutes() const { return (_hour != static_cast<uint8_t>(~0)); }
-        bool HasSeconds() const { return (_hour != static_cast<uint8_t>(~0)); }
+        bool HasHours() const { return (_hour < 24); }
+        bool HasMinutes() const { return (_minute < 60); }
+        bool HasSeconds() const { return (_second < 60); }
         uint8_t Hour() const { return _hour; }
         uint8_t Minute() const { return _minute; }
         uint8_t Second() const { return _second; }
@@ -380,23 +380,23 @@ public:
     private:
         bool Parse(const string& time) {
             bool status = true;
-            printf("%s:%s:%d: time = %s\n", __FILE__, __func__, __LINE__, time.c_str());
+            string t = time;
 
             //Get hours
             uint8_t hour;
-            string hValue = Split(time, ":");
+            string hValue = Split(t, ":");
             status = IsValidTime(hValue, hour, 24);
             if (status == true) {
 
                //Get minutes
                 uint8_t minute;
-                string mValue = Split(time, ".");
+                string mValue = Split(t, ".");
                 status = IsValidTime(mValue, minute, 60);
                 if (status == true) {
 
                     //Store seconds
                     uint8_t second;
-                    string sValue = time;
+                    string sValue = t;
                     status = IsValidTime(sValue, second, 60);
                     if (status  == true) {
 
@@ -411,7 +411,6 @@ public:
                             _second = second;
                         }
                     }
-                    printf("%s:%s:%d: HH = %s MM = %s SS = %s\n", __FILE__, __func__, __LINE__, hValue.c_str(), mValue.c_str(), sValue.c_str());
                 }
             }
             return status;
@@ -426,7 +425,7 @@ private:
             bool status = true;
             if (IsDigit(str)) {
                 int t = atoi(str.c_str());
-                if (t > limit || t < 0) {
+                if (t >= limit || t < 0) {
                     status = false;
                     TRACE(Trace::Information, (_T("Invalid time  %s"), str.c_str()));
                 }
@@ -448,7 +447,6 @@ private:
                 word = str.substr(0, position);
                 str = str.substr(word.size() + 1, str.size());
             }
-            printf("%s:%s:%d: %s:     %s\n", __FILE__, __func__, __LINE__, word.c_str(), str.c_str());
             return word;
         }
 
@@ -458,7 +456,7 @@ private:
         uint8_t _second;
     };
 
-private:
+public:
     class Job: public Core::IDispatchType<void> {
     private:
         Job() = delete;
@@ -466,9 +464,12 @@ private:
         Job& operator=(const Job&) = delete;
 
     public:
-        Job(Config* config const Time& interval)
+        Job(Config* config, const Time& interval)
             : _hasRun(false)
+            , _pid(0)
             , _options(config->Command.Value().c_str())
+            , _process(false)
+            , _interval(interval)
         {
             auto iter = config->Parameters.Elements();
 
@@ -477,10 +478,10 @@ private:
 
                 if ((element.Option.IsSet() == true) && (element.Option.Value().empty() == false)) {
                     if ((element.Value.IsSet() == true) && (element.Value.Value().empty() == false)) {
-                        options.Set(element.Option.Value(), element.Value.Value());
+                        _options.Set(element.Option.Value(), element.Value.Value());
                     }
                     else {
-                        options.Set(element.Option.Value());
+                        _options.Set(element.Option.Value());
                     }
                 }
             }
@@ -491,29 +492,39 @@ private:
 
     public:
         bool IsOperational() const {
-            return ((_hasRun == false) && (_interval.IsValid() == false));
+
+            return ((_hasRun == true) && (_interval.IsValid() == true));
         }
         Core::Process& Process() {
-            _return (_process);
+            return (_process);
+        }
+        uint32_t Pid() {
+            return _pid;
         }
         virtual void Dispatch() override
         {
             _hasRun = true;
-           Time time;
-             // Check if the process is not active, no need to reschedule the same job againb.
+             // Check if the process is not active, no need to reschedule the same job again.
             if (_process.IsActive() == false) {
-                printf("%s:%s:%d: \n", __FILE__, __func__, __LINE__);
-                _process.Launch(_options);
+                _process.Launch(_options, &_pid);
             }
-            if (_interval.IsValid() == true) {
+
+            if (_interval.IsValid() == true && ((_interval.Hour() != 0) || (_interval.Minute() != 0) || (_interval.Second() != 0))) {
                 // Reschedule our next launch point...
-                Workerpool::Instance().Schedule(this, CurrentTime + Interval);
+                Core::Time scheduledTime(Core::Time::Now());
+                uint64_t intervalTime = ((_interval.Hour() * 60 + _interval.Minute()) * 60 + _interval.Second()) * 1000;
+                scheduledTime.Add(intervalTime);
+                PluginHost::WorkerPool::Instance().Schedule(scheduledTime,Core::ProxyType<Core::IDispatch>(*this));
+            }
+            else {
+                _hasRun = false;
             }
         }
 
     private:
         bool _hasRun;
-        Core::Process::Options _options(config.Command.Value().c_str());
+        uint32_t _pid;
+        Core::Process::Options _options;
         Core::Process _process;
         Time _interval;
     };
@@ -524,15 +535,9 @@ public:
 #endif
     Launcher()
         : _service(nullptr)
-        , _process(false)
-        , _pid(0)
         , _closeTime(0)
         , _notification(this)
         , _memory(nullptr)
-        , _time()
-        , _interval()
-        , _options(nullptr)
-        , _client(this)
         , _activity()
     {
     }
@@ -576,12 +581,12 @@ private:
 
 private:
     PluginHost::IShell* _service;
-    uint32_t _pid;
     uint8_t _closeTime;
     Core::Sink<Notification> _notification;
     Exchange::IMemory* _memory;
 
     static ProcessObserver _observer;
+    Core::ProxyType<Job> _activity;
 };
 
 } //namespace Plugin

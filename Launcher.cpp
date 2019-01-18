@@ -85,28 +85,30 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
         time = Time(config.ScheduleTime.Time.Value());
         if (time.IsValid() != true) {
-            SYSLOG(Trace::Warning, "Interval format is wrong");
+            SYSLOG(Trace::Warning, (_T("Time format is wrong")));
         }
 
         interval = Time(config.ScheduleTime.Interval.Value());
         if (interval.IsValid() != true) {
-            SYSLOG(Trace::Warning, "Interval format is wrong");
+            SYSLOG(Trace::Warning, (_T("Interval format is wrong")));
         }
-        printf("%s:%s:%d %s %s\n", __FILE__, __func__, __LINE__, time.c_str(), interval.c_str());
     }
 
-    _activity = Core::ProxyType<Job>::Create(&config, interval)
-
+    _activity = Core::ProxyType<Job>::Create(&config, interval);
     if (_activity.IsValid() == true) {
-        if (_activity->IsOperational() == true) {
+        if (_activity->IsOperational() == false) {
             // Well if we where able to parse the parameters (if needed) we are ready to start it..
             _observer.Register(&_notification);
 
-            if (_time.Valid() == true) {
-                Workerpool::Instance().Schedule(scheduledTime, _activity);
+            if (time.IsValid() == true) {
+                Core::Time scheduledTime(Core::Time::Now());
+                uint64_t timeValueToTrigger = ((time.Hour() * 60 + time.Minute()) * 60 + time.Second()) * 1000;
+                scheduledTime.Add(timeValueToTrigger);
+
+                PluginHost::WorkerPool::Instance().Schedule(scheduledTime, _activity);
             }
             else {
-                Workerpool::Instance().Submit(_activity);
+                PluginHost::WorkerPool::Instance().Submit(_activity);
             }
         }
         else {
@@ -132,13 +134,13 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
         _memory = nullptr;
     }
 
-    if (_process.IsActive() == true) {
+    if (_activity->Process().IsActive() == true) {
         // First try a gentle touch....
-        _process.Kill(false);
+        _activity->Process().Kill(false);
 
         // Wait for a maximum of 3 Seconds before we shoot the process!!
-        if (_process.WaitProcessCompleted(_closeTime * 1000) != Core::ERROR_NONE) {
-            _process.Kill(true);
+        if (_activity->Process().WaitProcessCompleted(_closeTime * 1000) != Core::ERROR_NONE) {
+            _activity->Process().Kill(true);
         }
     }
 
@@ -155,7 +157,7 @@ void Launcher::Update(const ProcessObserver::Info& info)
 {
     // This can potentially be called on a socket thread, so the deactivation (wich in turn kills this object) must be done
     // on a seperate thread. Also make sure this call-stack can be unwound before we are totally destructed.
-    if ((_activity.IsValid() == true) && (_activity->Process.Pid() == info.Id()) {
+    if ((_activity.IsValid() == true) && (_activity->Pid() == info.Id())) {
 
         ASSERT(_service != nullptr);
 
