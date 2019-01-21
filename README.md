@@ -60,7 +60,7 @@ Plugin to "Launch" linux applications and scripts
 
 ### How to schedule an application/script
 
-1. Add schedule time information to the Launcher.json in the HH:MM.SS format (Hour:Minute.Second)
+1. Add schedule relative time information to the Launcher.json in the HH:MM.SS format (Hour:Minute.Second)
    ```
    "configuration": {
      "command":"du",
@@ -69,11 +69,11 @@ Plugin to "Launch" linux applications and scripts
        { "option": "-h"}
       ],
      "schedule": {
-       "time": "06:04.10"
+       "relativetime": "06:04.10"
      }
    }
    ```
-Note: If time value is "00:00.00"/invalid format/not set, the launcher will ignore the given time and launch the application at the launcher activation time itself.
+Note: If relative time value is "00:00.00"/invalid format/not set, the launcher will ignore the given time and launch the application at the launcher activation time itself.
 
 ### How to schedule an application/script to run in an interval
 
@@ -86,7 +86,7 @@ Note: If time value is "00:00.00"/invalid format/not set, the launcher will igno
        { "option": "-h"}
       ],
       "schedule": {
-        "time": "06:04.10",
+        "relativetime": "06:04.10",
         "interval": "00:40.10"
       }
    }

@@ -300,22 +300,22 @@ public:
         public:
             Schedule()
                 : Core::JSON::Container()
-                , Time()
+                , RelativeTime()
                 , Interval() {
-                Add(_T("time"), &Time);
+                Add(_T("relativetime"), &RelativeTime);
                 Add(_T("interval"), &Interval);
             }
             Schedule(const Schedule& copy)
                 : Core::JSON::Container()
-                , Time(copy.Time)
+                , RelativeTime(copy.RelativeTime)
                 , Interval(copy.Interval) {
-                Add(_T("time"), &Time);
+                Add(_T("relativetime"), &RelativeTime);
                 Add(_T("interval"), &Interval);
             }
             ~Schedule() {
             }
         public:
-            Core::JSON::String Time;
+            Core::JSON::String RelativeTime;
             Core::JSON::String Interval;
         };
 
