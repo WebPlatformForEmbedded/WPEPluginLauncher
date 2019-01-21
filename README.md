@@ -69,7 +69,7 @@ Plugin to "Launch" linux applications and scripts
        { "option": "-h"}
       ],
      "schedule": {
-       "absoulute": false,
+       "absolute": false,
        "time": "06:04.10"
      }
    }
@@ -90,7 +90,7 @@ Note:
        { "option": "-h"}
       ],
       "schedule": {
-        "absoulute": false,
+        "absolute": false,
         "time": "06:04.10",
         "interval": "00:40.10"
       }
