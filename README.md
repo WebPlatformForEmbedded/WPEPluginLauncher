@@ -69,11 +69,15 @@ Plugin to "Launch" linux applications and scripts
        { "option": "-h"}
       ],
      "schedule": {
-       "relativetime": "06:04.10"
+       "absoulute": false,
+       "time": "06:04.10"
      }
    }
    ```
-Note: If relative time value is "00:00.00"/invalid format/not set, the launcher will ignore the given time and launch the application at the launcher activation time itself.
+
+Note:
+1. If field "absolute" is false or not set, it will treat the time as relative
+2. If relative time value is "00:00.00"/invalid format/not set, the launcher will ignore the given time and launch the application at the launcher activation time itself.
 
 ### How to schedule an application/script to run in an interval
 
@@ -86,7 +90,8 @@ Note: If relative time value is "00:00.00"/invalid format/not set, the launcher 
        { "option": "-h"}
       ],
       "schedule": {
-        "relativetime": "06:04.10",
+        "absoulute": false,
+        "time": "06:04.10",
         "interval": "00:40.10"
       }
    }

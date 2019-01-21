@@ -68,7 +68,7 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
 /* virtual */ const string Launcher::Initialize(PluginHost::IShell* service)
 {
-    Time relativeTime;
+    Time time;
     Time interval;
     string message;
     Config config;
@@ -83,8 +83,8 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
     if (config.ScheduleTime.IsSet() == true) {
 
-        relativeTime = Time(config.ScheduleTime.RelativeTime.Value());
-        if (relativeTime.IsValid() != true) {
+        time = Time(config.ScheduleTime.Time.Value());
+        if (time.IsValid() != true) {
             SYSLOG(Trace::Warning, (_T("Time format is wrong")));
         }
 
@@ -100,9 +100,9 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
             // Well if we where able to parse the parameters (if needed) we are ready to start it..
             _observer.Register(&_notification);
 
-            if (relativeTime.IsValid() == true) {
+            if (time.IsValid() == true) {
                 Core::Time scheduledTime(Core::Time::Now());
-                uint64_t timeValueToTrigger = ((relativeTime.Hour() * 60 + relativeTime.Minute()) * 60 + relativeTime.Second()) * 1000;
+                uint64_t timeValueToTrigger = ((time.Hour() * 60 + time.Minute()) * 60 + time.Second()) * 1000;
                 scheduledTime.Add(timeValueToTrigger);
 
                 PluginHost::WorkerPool::Instance().Schedule(scheduledTime, _activity);
