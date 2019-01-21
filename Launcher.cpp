@@ -68,6 +68,8 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
 /* virtual */ const string Launcher::Initialize(PluginHost::IShell* service)
 {
+    Time relativeTime;
+    Time interval;
     string message;
     Config config;
 
@@ -79,34 +81,42 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
     config.FromString(_service->ConfigLine());
 
-    _closeTime = (config.CloseTime.Value());
-    Core::Process::Options options(config.Command.Value().c_str());
-    auto iter = config.Parameters.Elements();
+    if (config.ScheduleTime.IsSet() == true) {
 
-    while (iter.Next() == true) {
-        const Config::Parameter& element(iter.Current());
+        relativeTime = Time(config.ScheduleTime.RelativeTime.Value());
+        if (relativeTime.IsValid() != true) {
+            SYSLOG(Trace::Warning, (_T("Time format is wrong")));
+        }
 
-        if ((element.Option.IsSet() == true) && (element.Option.Value().empty() == false)) {
-            if ((element.Value.IsSet() == true) && (element.Value.Value().empty() == false)) {
-                options.Set(element.Option.Value(), element.Value.Value());
-            }
-            else {
-                options.Set(element.Option.Value());
-            }
+        interval = Time(config.ScheduleTime.Interval.Value());
+        if (interval.IsValid() != true) {
+            SYSLOG(Trace::Warning, (_T("Interval format is wrong")));
         }
     }
 
-    _observer.Register(&_notification);
+    _activity = Core::ProxyType<Job>::Create(&config, interval);
+    if (_activity.IsValid() == true) {
+        if (_activity->IsOperational() == false) {
+            // Well if we where able to parse the parameters (if needed) we are ready to start it..
+            _observer.Register(&_notification);
 
-    // Well if we where able to parse the parameters (if needed) we are ready to start it..
-    _process.Launch(options, &_pid);
+            if (relativeTime.IsValid() == true) {
+                Core::Time scheduledTime(Core::Time::Now());
+                uint64_t timeValueToTrigger = ((relativeTime.Hour() * 60 + relativeTime.Minute()) * 60 + relativeTime.Second()) * 1000;
+                scheduledTime.Add(timeValueToTrigger);
 
-    if (_pid == 0) {
-        _observer.Unregister(&_notification);
-        message = _T("Could not spawn the requested app/script [") + config.Command.Value() + ']';
+                PluginHost::WorkerPool::Instance().Schedule(scheduledTime, _activity);
+            }
+            else {
+                PluginHost::WorkerPool::Instance().Submit(_activity);
+            }
+        }
+        else {
+            message = _T("Could not parse the configuration for the job.");
+        }
     }
     else {
-        _memory = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(_pid);
+        message = _T("Could not create the job.");
     }
 
     return (message);
@@ -124,13 +134,13 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
         _memory = nullptr;
     }
 
-    if (_process.IsActive() == true) {
+    if (_activity->Process().IsActive() == true) {
         // First try a gentle touch....
-        _process.Kill(false);
+        _activity->Process().Kill(false);
 
         // Wait for a maximum of 3 Seconds before we shoot the process!!
-        if (_process.WaitProcessCompleted(_closeTime * 1000) != Core::ERROR_NONE) {
-            _process.Kill(true);
+        if (_activity->Process().WaitProcessCompleted(_closeTime * 1000) != Core::ERROR_NONE) {
+            _activity->Process().Kill(true);
         }
     }
 
@@ -147,14 +157,20 @@ void Launcher::Update(const ProcessObserver::Info& info)
 {
     // This can potentially be called on a socket thread, so the deactivation (wich in turn kills this object) must be done
     // on a seperate thread. Also make sure this call-stack can be unwound before we are totally destructed.
-    if (_pid == info.Id()) {
+    if ((_activity.IsValid() == true) && (_activity->Pid() == info.Id())) {
 
         ASSERT(_service != nullptr);
 
         if (info.Event() == ProcessObserver::Info::EVENT_EXIT) {
         
             if ((info.ExitCode() & 0xFFFF) == 0) {
-                PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::AUTOMATIC));
+                // Only do this if we do not need a retrigger on an intervall.
+                if (_activity->IsOperational() == false) {
+                    PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::AUTOMATIC));
+                }
+                else {
+                    TRACE(Trace::Information, (_T("The process has run, and completed succefully.")));
+                }
             }
             else {
                 PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
@@ -162,7 +178,6 @@ void Launcher::Update(const ProcessObserver::Info& info)
         }
     }
 }
-
 
 } //namespace Plugin
 

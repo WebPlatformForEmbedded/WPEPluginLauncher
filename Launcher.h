@@ -293,15 +293,44 @@ public:
         };
 
     public:
+        class Schedule : public Core::JSON::Container {
+        private:
+            Schedule& operator=(const Schedule&) = delete;
+
+        public:
+            Schedule()
+                : Core::JSON::Container()
+                , RelativeTime()
+                , Interval() {
+                Add(_T("relativetime"), &RelativeTime);
+                Add(_T("interval"), &Interval);
+            }
+            Schedule(const Schedule& copy)
+                : Core::JSON::Container()
+                , RelativeTime(copy.RelativeTime)
+                , Interval(copy.Interval) {
+                Add(_T("relativetime"), &RelativeTime);
+                Add(_T("interval"), &Interval);
+            }
+            ~Schedule() {
+            }
+        public:
+            Core::JSON::String RelativeTime;
+            Core::JSON::String Interval;
+        };
+
+    public:
         Config()
             : Core::JSON::Container()
             , Command()
             , Parameters()
             , CloseTime(3)
+            , ScheduleTime()
         {
             Add(_T("command"), &Command);
             Add(_T("parameters"), &Parameters);
             Add(_T("closetime"), &CloseTime);
+            Add(_T("schedule"), &ScheduleTime);
         }
         ~Config()
         {
@@ -311,6 +340,193 @@ public:
         Core::JSON::String Command;
         Core::JSON::ArrayType<Parameter> Parameters;
         Core::JSON::DecUInt8 CloseTime;
+        Schedule ScheduleTime;
+    };
+
+    class Time {
+    public:
+        Time()
+        : _hour(~0)
+        , _minute(~0)
+        , _second(~0)
+        {
+        }
+        Time(const string& time) 
+        : _hour(~0) 
+        , _minute(~0)
+        , _second(~0)
+        {
+            Parse(time);
+        }
+        Time(const Time& copy) 
+        : _hour(copy._hour) 
+        , _minute(copy._minute)
+        , _second(copy._second)
+        {
+        }
+        ~Time ()
+        {
+        }
+
+    public:
+        bool IsValid () const { return (HasSeconds() || HasMinutes() || HasHours()); }
+        bool HasHours() const { return (_hour < 24); }
+        bool HasMinutes() const { return (_minute < 60); }
+        bool HasSeconds() const { return (_second < 60); }
+        uint8_t Hour() const { return _hour; }
+        uint8_t Minute() const { return _minute; }
+        uint8_t Second() const { return _second; }
+
+    private:
+        bool Parse(const string& time) {
+            bool status = true;
+            string t = time;
+
+            //Get hours
+            uint8_t hour;
+            string hValue = Split(t, ":");
+            status = IsValidTime(hValue, hour, 24);
+            if (status == true) {
+
+               //Get minutes
+                uint8_t minute;
+                string mValue = Split(t, ".");
+                status = IsValidTime(mValue, minute, 60);
+                if (status == true) {
+
+                    //Store seconds
+                    uint8_t second;
+                    string sValue = t;
+                    status = IsValidTime(sValue, second, 60);
+                    if (status  == true) {
+
+                        //Check all the time components are still valid
+                        if ((hour > 0 && second > 0) && (minute == 0)) {
+                            status = false;
+                            TRACE(Trace::Information, (_T("Invalid time format")));
+                        }
+                        else { //Update time components
+                            _hour = hour;
+                            _minute = minute;
+                            _second = second;
+                        }
+                    }
+                }
+            }
+            return status;
+        }
+
+private:
+        inline bool IsDigit(const string& str) {
+            return (str.find_first_not_of( "0123456789" ) == std::string::npos);
+        }
+
+        inline bool IsValidTime(const string& str, uint8_t& time, const uint8_t limit) {
+            bool status = true;
+            if (IsDigit(str)) {
+                int t = atoi(str.c_str());
+                if (t >= limit || t < 0) {
+                    status = false;
+                    TRACE(Trace::Information, (_T("Invalid time  %s"), str.c_str()));
+                }
+                else {
+                    time = t;
+                }
+            }
+            else {
+                status = false;
+                TRACE(Trace::Information, (_T("Invalid time %s"), str.c_str()));
+            }
+            return status;
+        }
+
+        inline string Split(string& str, const string delimiter) {
+            string word;
+            size_t position = str.find(delimiter, 0);
+            if (position != string::npos) {
+                word = str.substr(0, position);
+                str = str.substr(word.size() + 1, str.size());
+            }
+            return word;
+        }
+
+private:
+        uint8_t _hour;
+        uint8_t _minute;
+        uint8_t _second;
+    };
+
+public:
+    class Job: public Core::IDispatchType<void> {
+    private:
+        Job() = delete;
+        Job(const Job&) = delete;
+        Job& operator=(const Job&) = delete;
+
+    public:
+        Job(Config* config, const Time& interval)
+            : _hasRun(false)
+            , _pid(0)
+            , _options(config->Command.Value().c_str())
+            , _process(false)
+            , _interval(interval)
+        {
+            auto iter = config->Parameters.Elements();
+
+            while (iter.Next() == true) {
+                const Config::Parameter& element(iter.Current());
+
+                if ((element.Option.IsSet() == true) && (element.Option.Value().empty() == false)) {
+                    if ((element.Value.IsSet() == true) && (element.Value.Value().empty() == false)) {
+                        _options.Set(element.Option.Value(), element.Value.Value());
+                    }
+                    else {
+                        _options.Set(element.Option.Value());
+                    }
+                }
+            }
+        }
+        ~Job()
+        {
+        }
+
+    public:
+        bool IsOperational() const {
+
+            return ((_hasRun == true) && (_interval.IsValid() == true));
+        }
+        Core::Process& Process() {
+            return (_process);
+        }
+        uint32_t Pid() {
+            return _pid;
+        }
+        virtual void Dispatch() override
+        {
+            _hasRun = true;
+             // Check if the process is not active, no need to reschedule the same job again.
+            if (_process.IsActive() == false) {
+                _process.Launch(_options, &_pid);
+            }
+
+            if (_interval.IsValid() == true && ((_interval.Hour() != 0) || (_interval.Minute() != 0) || (_interval.Second() != 0))) {
+                // Reschedule our next launch point...
+                Core::Time scheduledTime(Core::Time::Now());
+                uint64_t intervalTime = ((_interval.Hour() * 60 + _interval.Minute()) * 60 + _interval.Second()) * 1000;
+                scheduledTime.Add(intervalTime);
+                PluginHost::WorkerPool::Instance().Schedule(scheduledTime,Core::ProxyType<Core::IDispatch>(*this));
+            }
+            else {
+                _hasRun = false;
+            }
+        }
+
+    private:
+        bool _hasRun;
+        uint32_t _pid;
+        Core::Process::Options _options;
+        Core::Process _process;
+        Time _interval;
     };
 
 public:
@@ -319,11 +535,10 @@ public:
 #endif
     Launcher()
         : _service(nullptr)
-        , _process(false)
-        , _pid(0)
         , _closeTime(0)
         , _notification(this)
         , _memory(nullptr)
+        , _activity()
     {
     }
 #ifdef __WIN32__
@@ -362,16 +577,16 @@ public:
 
 private:
     void Update(const ProcessObserver::Info& info);
+    bool Execute();
 
 private:
     PluginHost::IShell* _service;
-    Core::Process _process;
-    uint32_t _pid;
     uint8_t _closeTime;
     Core::Sink<Notification> _notification;
     Exchange::IMemory* _memory;
 
     static ProcessObserver _observer;
+    Core::ProxyType<Job> _activity;
 };
 
 } //namespace Plugin
