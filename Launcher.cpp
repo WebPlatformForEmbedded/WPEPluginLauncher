@@ -1,7 +1,16 @@
 #include "Launcher.h"
+#include <inttypes.h>
 
 namespace WPEFramework {
 
+ENUM_CONVERSION_BEGIN(Plugin::Launcher::mode)
+
+    { Plugin::Launcher::mode::RELATIVE, _TXT("relative") },
+    { Plugin::Launcher::mode::ABSOLUTE, _TXT("absolute") },
+    { Plugin::Launcher::mode::ABSOLUTE_WITH_INTERVAL, _TXT("interval") },
+
+    ENUM_CONVERSION_END(Plugin::Launcher::mode)
+;
 namespace Plugin {
 
 SERVICE_REGISTRATION(Launcher, 1, 0);
@@ -70,6 +79,7 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 {
     Time time;
     Time interval;
+    mode timeMode = RELATIVE;
     string message;
     Config config;
 
@@ -82,6 +92,8 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
     config.FromString(_service->ConfigLine());
 
     if (config.ScheduleTime.IsSet() == true) {
+
+        timeMode = config.ScheduleTime.Mode.Value();
 
         time = Time(config.ScheduleTime.Time.Value());
         if (time.IsValid() != true) {
@@ -99,12 +111,25 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
         if (_activity->IsOperational() == false) {
             // Well if we where able to parse the parameters (if needed) we are ready to start it..
             _observer.Register(&_notification);
-
+            Core::Time scheduledTime;
             if (time.IsValid() == true) {
-                Core::Time scheduledTime(Core::Time::Now());
-                uint64_t timeValueToTrigger = ((time.Hour() * 60 + time.Minute()) * 60 + time.Second()) * 1000;
-                scheduledTime.Add(timeValueToTrigger);
+                if (timeMode == RELATIVE) { //Schedule Job at relative timing
+                    scheduledTime = Core::Time::Now();
 
+                    uint64_t timeValueToTrigger = ((((time.Hours() != (uint8_t)(~0)) ? time.Hours(): 0) * MinutesPerHour +
+                                                    ((time.Minutes() != (uint8_t)(~0)) ? time.Minutes(): 0)) * SecondsPerMinute + time.Seconds()) * MilliSecondsPerSecond;
+                    scheduledTime.Add(timeValueToTrigger);
+
+                }
+                else {
+                    //Schedule Job at absolute timing
+                    if (timeMode == ABSOLUTE_WITH_INTERVAL) {
+                        scheduledTime = FindAbsoluteTimeForSchedule(time, interval);
+                    }
+                    else {
+                        scheduledTime = FindAbsoluteTimeForSchedule(time, Time());
+                    }
+                }
                 PluginHost::WorkerPool::Instance().Schedule(scheduledTime, _activity);
             }
             else {
@@ -177,6 +202,44 @@ void Launcher::Update(const ProcessObserver::Info& info)
             }
         }
     }
+}
+
+Core::Time Launcher::FindAbsoluteTimeForSchedule(const Time& absoluteTime, const Time& interval) {
+    Core::Time startTime = Core::Time::Now();
+    // Go to a first viable start time (compared to the current time, in seconds)
+    Core::Time slotTime = Core::Time(startTime.Year(), startTime.Month(), startTime.Day(),
+                                   (absoluteTime.HasHours()   ? absoluteTime.Hours() : startTime.Hours()),
+                                   (absoluteTime.HasMinutes() ? absoluteTime.Minutes() : startTime.Minutes()),
+                                   absoluteTime.Seconds(), 0, false);
+
+    if (interval.IsValid() == false) {
+        if (slotTime < startTime) {
+            uint32_t jump (absoluteTime.HasHours() ? HoursPerDay * MinutesPerHour * SecondsPerMinute : (absoluteTime.HasMinutes() ? MinutesPerHour * SecondsPerMinute : SecondsPerMinute));
+            slotTime.Add(jump * 100);
+        }
+    }
+    else {
+        uint32_t intervalJump = ( (interval.HasHours()   ? interval.Hours() * MinutesPerHour * SecondsPerMinute : 0) +
+                                  (interval.HasMinutes() ? interval.Minutes() * SecondsPerMinute : 0) +
+                                   interval.Seconds() ) * 100;
+
+        ASSERT (intervalJump != 0);
+        if (slotTime >= startTime) {
+            Core::Time workTime (slotTime);
+
+            while (workTime.Sub(intervalJump) > startTime) {
+                slotTime.Sub(intervalJump);
+            }
+        }
+        else {
+            // Now increment with the intervall till we reach a valid point
+            while (slotTime < startTime) {
+                slotTime.Add(intervalJump);
+            }
+        }
+    }
+
+    return slotTime;
 }
 
 } //namespace Plugin
