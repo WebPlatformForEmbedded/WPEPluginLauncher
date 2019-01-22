@@ -12,6 +12,13 @@ private:
     Launcher(const Launcher&) = delete;
     Launcher& operator=(const Launcher&) = delete;
 
+public:
+    enum mode {
+        RELATIVE,
+        ABSOLUTE,
+        ABSOLUTE_WITH_INTERVAL
+    };
+
     class ProcessObserver {
     private:
         ProcessObserver(const ProcessObserver&) = delete;
@@ -300,26 +307,26 @@ public:
         public:
             Schedule()
                 : Core::JSON::Container()
-                , Absolute(false)
+                , Mode(RELATIVE)
                 , Time()
                 , Interval() {
-                Add(_T("absolute"), &Absolute);
+                Add(_T("mode"), &Mode);
                 Add(_T("time"), &Time);
                 Add(_T("interval"), &Interval);
             }
             Schedule(const Schedule& copy)
                 : Core::JSON::Container()
-                , Absolute(copy.Absolute)
+                , Mode(copy.Mode)
                 , Time(copy.Time)
                 , Interval(copy.Interval) {
-                Add(_T("absolute"), &Absolute);
+                Add(_T("mode"), &Mode);
                 Add(_T("time"), &Time);
                 Add(_T("interval"), &Interval);
             }
             ~Schedule() {
             }
         public:
-            Core::JSON::Boolean Absolute;
+            Core::JSON::EnumType<mode> Mode;
             Core::JSON::String Time;
             Core::JSON::String Interval;
         };
@@ -348,7 +355,7 @@ public:
         Schedule ScheduleTime;
     };
 
-private:
+    private:
     static constexpr uint32_t MilliSecondsPerSecond = 1000;
     static constexpr uint32_t SecondsPerMinute = 60;
     static constexpr uint32_t MinutesPerHour = 60;
@@ -384,9 +391,9 @@ private:
         bool HasHours() const { return (_hour < HoursPerDay); }
         bool HasMinutes() const { return (_minute < MinutesPerHour); }
         bool HasSeconds() const { return (_second < SecondsPerMinute); }
-        uint8_t Hour() const { return _hour; }
-        uint8_t Minute() const { return _minute; }
-        uint8_t Second() const { return _second; }
+        uint8_t Hours() const { return _hour; }
+        uint8_t Minutes() const { return _minute; }
+        uint8_t Seconds() const { return _second; }
 
     private:
         bool Parse(const string& time) {
@@ -522,14 +529,16 @@ public:
             _hasRun = true;
              // Check if the process is not active, no need to reschedule the same job again.
             if (_process.IsActive() == false) {
+
+                Core::Time currentTime(Core::Time::Now());
                 _process.Launch(_options, &_pid);
             }
 
             if (_interval.IsValid() == true) {
                 // Reschedule our next launch point...
                 Core::Time scheduledTime(Core::Time::Now());
-                uint64_t intervalTime = ((((_interval.Hour() != (uint8_t)(~0)) ? _interval.Hour(): 0) * MinutesPerHour +
-                                          ((_interval.Minute() != (uint8_t)(~0)) ? _interval.Minute():0)) * SecondsPerMinute + _interval.Second()) * MilliSecondsPerSecond;
+                uint64_t intervalTime = ((((_interval.Hours() != (uint8_t)(~0)) ? _interval.Hours(): 0) * MinutesPerHour +
+                                          ((_interval.Minutes() != (uint8_t)(~0)) ? _interval.Minutes():0)) * SecondsPerMinute + _interval.Seconds()) * MilliSecondsPerSecond;
                 scheduledTime.Add(intervalTime);
                 PluginHost::WorkerPool::Instance().Schedule(scheduledTime,Core::ProxyType<Core::IDispatch>(*this));
             }
@@ -595,7 +604,7 @@ public:
 private:
     void Update(const ProcessObserver::Info& info);
     bool Execute();
-    Core::Time FindAbsoluteTimeForSchedule(const Time absoluteTime, const Time interval);
+    Core::Time FindAbsoluteTimeForSchedule(const Time& absoluteTime, const Time& interval);
 
 private:
     PluginHost::IShell* _service;

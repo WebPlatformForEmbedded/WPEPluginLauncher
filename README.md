@@ -69,14 +69,14 @@ Plugin to "Launch" linux applications and scripts
        { "option": "-h"}
       ],
      "schedule": {
-       "absolute": false,
+       "mode": 0,
        "time": "06:04.10"
      }
    }
    ```
 
 Note:
-1. If field "absolute" is false or not set, it will treat the time as relative
+1. If field "mode" is zero or not set, it will treat the time as relative
 2. If relative time value is "00:00.00"/invalid format/not set, the launcher will ignore the given time and launch the application at the launcher activation time itself.
 3. If time format given is
   a. "XX", treat it as SS
@@ -93,7 +93,7 @@ Note:
        { "option": "-h"}
       ],
      "schedule": {
-       "absolute": true,
+       "mode": 1,
        "time": "06:04.10"
      }
    }
@@ -121,7 +121,7 @@ Note:
        { "option": "-h"}
       ],
       "schedule": {
-        "absolute": false,
+        "mode": 2,
         "time": "06:04.10",
         "interval": "00:40.10"
       }
@@ -130,8 +130,9 @@ Note:
 
 Note:
 1. If interval value is "00:00.00"/invalid format/not set, the launcher will treat it as invalid value and ignore the interval time settings.
-2. If absolute time given is less than the current time and interval is set, it will identify next matching time and schedule application launch to that time.
+2. If mode is 2 (absolute with interval) and interval is set, it will identify next matching time and schedule application launch to that time.
    i.e, if the absolute time given is 04:00:00, current time is 05:10:00 and interval is 00:30:00, then next scheduling time will be 05:30:00 (will be identified from the next intervals - 04:30:00, 05:00:00, 05:30:00)
+3. If mode is 0(relative) or 1(absolute), the interval time will be taken only for the subsequent scheduling
 
 # How to launch multiple scripts/applcations
 

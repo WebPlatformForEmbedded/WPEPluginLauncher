@@ -1,7 +1,16 @@
 #include "Launcher.h"
+#include <inttypes.h>
 
 namespace WPEFramework {
 
+ENUM_CONVERSION_BEGIN(Plugin::Launcher::mode)
+
+    { Plugin::Launcher::mode::RELATIVE, _TXT("relative") },
+    { Plugin::Launcher::mode::ABSOLUTE, _TXT("absolute") },
+    { Plugin::Launcher::mode::ABSOLUTE_WITH_INTERVAL, _TXT("absolute_with_interval") },
+
+    ENUM_CONVERSION_END(Plugin::Launcher::mode)
+;
 namespace Plugin {
 
 SERVICE_REGISTRATION(Launcher, 1, 0);
@@ -70,7 +79,7 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 {
     Time time;
     Time interval;
-    bool absolute = false;
+    mode timeMode = RELATIVE;
     string message;
     Config config;
 
@@ -84,7 +93,7 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
     if (config.ScheduleTime.IsSet() == true) {
 
-        absolute = config.ScheduleTime.Absolute.Value();
+        timeMode = config.ScheduleTime.Mode.Value();
 
         time = Time(config.ScheduleTime.Time.Value());
         if (time.IsValid() != true) {
@@ -102,20 +111,26 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
         if (_activity->IsOperational() == false) {
             // Well if we where able to parse the parameters (if needed) we are ready to start it..
             _observer.Register(&_notification);
+            Core::Time scheduledTime;
             if (time.IsValid() == true) {
-                if (absolute == true) {
-                    //Schedule Job at absolute timing
-                    Core::Time scheduledTime = FindAbsoluteTimeForSchedule(time, interval);
-                    PluginHost::WorkerPool::Instance().Schedule(scheduledTime, _activity);
-                }
-                else { //Schedule Job at relative timing
-                    Core::Time scheduledTime(Core::Time::Now();
-                    uint64_t timeValueToTrigger = ((((time.Hour() != (uint8_t)(~0)) ? time.Hour(): 0) * MinutesPerHour +
-                                                    ((time.Minute() != (uint8_t)(~0)) ? time.Minute(): 0)) * SecondsPerMinute + time.Second()) * MilliSecondsPerSecond;
+                if (timeMode == RELATIVE) { //Schedule Job at relative timing
+                    scheduledTime = Core::Time::Now();
+
+                    uint64_t timeValueToTrigger = ((((time.Hours() != (uint8_t)(~0)) ? time.Hours(): 0) * MinutesPerHour +
+                                                    ((time.Minutes() != (uint8_t)(~0)) ? time.Minutes(): 0)) * SecondsPerMinute + time.Seconds()) * MilliSecondsPerSecond;
                     scheduledTime.Add(timeValueToTrigger);
 
-                    PluginHost::WorkerPool::Instance().Schedule(scheduledTime, _activity);
                 }
+                else {
+                    //Schedule Job at absolute timing
+                    if (timeMode == ABSOLUTE_WITH_INTERVAL) {
+                        scheduledTime = FindAbsoluteTimeForSchedule(time, interval);
+                    }
+                    else {
+                        scheduledTime = FindAbsoluteTimeForSchedule(time, Time());
+                    }
+                }
+                PluginHost::WorkerPool::Instance().Schedule(scheduledTime, _activity);
             }
             else {
                 PluginHost::WorkerPool::Instance().Submit(_activity);
@@ -189,63 +204,40 @@ void Launcher::Update(const ProcessObserver::Info& info)
     }
 }
 
-Core::Time Launcher::FindAbsoluteTimeForSchedule(const Time absoluteTime, const Time interval) {
+Core::Time Launcher::FindAbsoluteTimeForSchedule(const Time& absoluteTime, const Time& interval) {
+    Core::Time startTime = Core::Time::Now();
+    // Go to a first viable start time (compared to the current time, in seconds)
+    Core::Time slotTime = Core::Time(startTime.Year(), startTime.Month(), startTime.Day(),
+                                   (absoluteTime.HasHours()   ? absoluteTime.Hours() : startTime.Hours()),
+                                   (absoluteTime.HasMinutes() ? absoluteTime.Minutes() : startTime.Minutes()),
+                                   absoluteTime.Seconds(), 0, false);
 
-    Core::Time scheduledTime;
-    Core::Time currentTime(Core::Time::Now());
-
-    uint64_t absoluteTimeInMilliSeconds = 0;
-    uint64_t currentTimeInMilliSeconds = 0;
-
-    if (!absoluteTime.HasHours()) { //Hour is don't care condition, so schedule based on the MM.SS
-        uint64_t nextScheduleTimeInMilliSeconds = 0;
-        uint64_t timeLimitInMilliSeconds = 0;
-        if (!absoluteTime.HasMinutes()) { //Minute is don't care condition, so schedule based on the SS
-            absoluteTimeInMilliSeconds = (absoluteTime.Second() * MilliSecondsPerSecond);
-            currentTimeInMilliSeconds =  (currentTime.Seconds() * MilliSecondsPerSecond);
-            timeLimitInMilliSeconds = (SecondsPerMinute * MilliSecondsPerSecond);
+    if (interval.IsValid() == false) {
+        if (slotTime < startTime) {
+            uint32_t jump (absoluteTime.HasHours() ? HoursPerDay * MinutesPerHour * SecondsPerMinute : (absoluteTime.HasMinutes() ? MinutesPerHour * SecondsPerMinute : SecondsPerMinute));
+            slotTime.Add(jump * 100);
         }
-        else {
-            absoluteTimeInMilliSeconds = ((absoluteTime.Minute() * SecondsPerMinute) + absoluteTime.Second()) * MilliSecondsPerSecond;
-            currentTimeInMilliSeconds = ((currentTime.Minutes() * SecondsPerMinute) + currentTime.Seconds()) * MilliSecondsPerSecond;
-            timeLimitInMilliSeconds = MinutesPerHour * SecondsPerMinute * MilliSecondsPerSecond;
-        }
-        if (currentTimeInMilliSeconds < absoluteTimeInMilliSeconds) { //Time is not reached
-            nextScheduleTimeInMilliSeconds = absoluteTimeInMilliSeconds - currentTimeInMilliSeconds;
-        }
-        else {
-            nextScheduleTimeInMilliSeconds = (timeLimitInMilliSeconds - currentTimeInMilliSeconds) + absoluteTimeInMilliSeconds;
-        }
-        scheduledTime = currentTime.Add(nextScheduleTimeInMilliSeconds);
     }
     else {
-        absoluteTimeInMilliSeconds = ((absoluteTime.Hour() * MinutesPerHour + absoluteTime.Minute()) * SecondsPerMinute + absoluteTime.Second()) * MilliSecondsPerSecond;
-        currentTimeInMilliSeconds = ((currentTime.Hours() * MinutesPerHour + currentTime.Minutes()) * SecondsPerMinute + currentTime.Seconds()) * MilliSecondsPerSecond;
-        if (currentTimeInMilliSeconds < absoluteTimeInMilliSeconds) { //Time is not reached
-            scheduledTime = currentTime.Add(absoluteTimeInMilliSeconds - currentTimeInMilliSeconds);
+        if (slotTime >= startTime) {
+            uint32_t jump (absoluteTime.HasHours() ? HoursPerDay * MinutesPerHour * SecondsPerMinute : (absoluteTime.HasMinutes() ? MinutesPerHour * SecondsPerMinute : SecondsPerMinute));
+
+            // Go back the biggest chunk of the absoluteTime
+            slotTime.Sub(jump * 100);
         }
-        else { //Time is already hit, find next suitable time
-            uint64_t nextScheduleTimeInMilliSeconds = 0;
-            if (interval.IsValid() == true) {
-                uint64_t intervalTimeInMilliSeconds = ((((interval.Hour() != ~0) ? interval.Hour(): 0) * MinutesPerHour +
-                                                        ((interval.Minute() != ~0) ? interval.Minute(): 0)) * SecondsPerMinute + interval.Second()) * MilliSecondsPerSecond;
-                nextScheduleTimeInMilliSeconds = absoluteTimeInMilliSeconds + intervalTimeInMilliSeconds;
-                do {
-                    if (currentTimeInMilliSeconds < nextScheduleTimeInMilliSeconds) {
-                        break;
-                    }
-                    nextScheduleTimeInMilliSeconds += intervalTimeInMilliSeconds;
-                } while(1);
-                scheduledTime = currentTime.Add(nextScheduleTimeInMilliSeconds - currentTimeInMilliSeconds);
-            }
-            else {
-                uint64_t timeLimitInMilliSeconds = (((HoursPerDay * MinutesPerHour) * SecondsPerMinute) * MilliSecondsPerSecond);
-                nextScheduleTimeInMilliSeconds = (timeLimitInMilliSeconds - currentTimeInMilliSeconds) + absoluteTimeInMilliSeconds;
-                scheduledTime = currentTime.Add(nextScheduleTimeInMilliSeconds);
-            }
+        uint32_t intervalJump = ( (interval.HasHours()   ? interval.Hours() * MinutesPerHour * SecondsPerMinute : 0) +
+                                  (interval.HasMinutes() ? interval.Minutes() * SecondsPerMinute : 0) +
+                                   interval.Seconds() ) * 100;
+
+        ASSERT (intervalJump != 0);
+
+        // Now increment with the intervall till we reach a valid point
+        while (slotTime < startTime) {
+            slotTime.Add(intervalJump);
         }
     }
-    return scheduledTime;
+
+    return slotTime;
 }
 
 } //namespace Plugin
