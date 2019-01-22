@@ -7,7 +7,7 @@ ENUM_CONVERSION_BEGIN(Plugin::Launcher::mode)
 
     { Plugin::Launcher::mode::RELATIVE, _TXT("relative") },
     { Plugin::Launcher::mode::ABSOLUTE, _TXT("absolute") },
-    { Plugin::Launcher::mode::ABSOLUTE_WITH_INTERVAL, _TXT("absolute_with_interval") },
+    { Plugin::Launcher::mode::ABSOLUTE_WITH_INTERVAL, _TXT("interval") },
 
     ENUM_CONVERSION_END(Plugin::Launcher::mode)
 ;
@@ -219,21 +219,23 @@ Core::Time Launcher::FindAbsoluteTimeForSchedule(const Time& absoluteTime, const
         }
     }
     else {
-        if (slotTime >= startTime) {
-            uint32_t jump (absoluteTime.HasHours() ? HoursPerDay * MinutesPerHour * SecondsPerMinute : (absoluteTime.HasMinutes() ? MinutesPerHour * SecondsPerMinute : SecondsPerMinute));
-
-            // Go back the biggest chunk of the absoluteTime
-            slotTime.Sub(jump * 100);
-        }
         uint32_t intervalJump = ( (interval.HasHours()   ? interval.Hours() * MinutesPerHour * SecondsPerMinute : 0) +
                                   (interval.HasMinutes() ? interval.Minutes() * SecondsPerMinute : 0) +
                                    interval.Seconds() ) * 100;
 
         ASSERT (intervalJump != 0);
+        if (slotTime >= startTime) {
+            Core::Time workTime (slotTime);
 
-        // Now increment with the intervall till we reach a valid point
-        while (slotTime < startTime) {
-            slotTime.Add(intervalJump);
+            while (workTime.Sub(intervalJump) > startTime) {
+                slotTime.Sub(intervalJump);
+            }
+        }
+        else {
+            // Now increment with the intervall till we reach a valid point
+            while (slotTime < startTime) {
+                slotTime.Add(intervalJump);
+            }
         }
     }
 
