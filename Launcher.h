@@ -537,8 +537,8 @@ public:
             if (_interval.IsValid() == true) {
                 // Reschedule our next launch point...
                 Core::Time scheduledTime(Core::Time::Now());
-                uint64_t intervalTime = (((_interval.Hours() ? _interval.Hours(): 0) * MinutesPerHour +
-                                          (_interval.Minutes() ? _interval.Minutes():0)) * SecondsPerMinute + _interval.Seconds()) * MilliSecondsPerSecond;
+                uint64_t intervalTime = (((_interval.HasHours() ? _interval.Hours(): 0) * MinutesPerHour +
+                                          (_interval.HasMinutes() ? _interval.Minutes():0)) * SecondsPerMinute + _interval.Seconds()) * MilliSecondsPerSecond;
                 scheduledTime.Add(intervalTime);
                 PluginHost::WorkerPool::Instance().Schedule(scheduledTime,Core::ProxyType<Core::IDispatch>(*this));
             }

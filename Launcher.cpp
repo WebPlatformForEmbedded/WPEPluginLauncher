@@ -117,8 +117,8 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
                     scheduledTime = Core::Time::Now();
 
 
-                    uint64_t timeValueToTrigger = (((time.Hours() ? time.Hours(): 0) * MinutesPerHour +
-                                                    (time.Minutes() ? time.Minutes(): 0)) * SecondsPerMinute + time.Seconds()) * MilliSecondsPerSecond;
+                    uint64_t timeValueToTrigger = (((time.HasHours() ? time.Hours(): 0) * MinutesPerHour +
+                                                    (time.HasMinutes() ? time.Minutes(): 0)) * SecondsPerMinute + time.Seconds()) * MilliSecondsPerSecond;
                     scheduledTime.Add(timeValueToTrigger);
 
                 }
