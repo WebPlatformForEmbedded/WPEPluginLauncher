@@ -116,8 +116,9 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
                 if (timeMode == RELATIVE) { //Schedule Job at relative timing
                     scheduledTime = Core::Time::Now();
 
-                    uint64_t timeValueToTrigger = ((((time.Hours() != (uint8_t)(~0)) ? time.Hours(): 0) * MinutesPerHour +
-                                                    ((time.Minutes() != (uint8_t)(~0)) ? time.Minutes(): 0)) * SecondsPerMinute + time.Seconds()) * MilliSecondsPerSecond;
+
+                    uint64_t timeValueToTrigger = (((time.Hours() ? time.Hours(): 0) * MinutesPerHour +
+                                                    (time.Minutes() ? time.Minutes(): 0)) * SecondsPerMinute + time.Seconds()) * MilliSecondsPerSecond;
                     scheduledTime.Add(timeValueToTrigger);
 
                 }
@@ -214,14 +215,16 @@ Core::Time Launcher::FindAbsoluteTimeForSchedule(const Time& absoluteTime, const
 
     if (interval.IsValid() == false) {
         if (slotTime < startTime) {
-            uint32_t jump (absoluteTime.HasHours() ? HoursPerDay * MinutesPerHour * SecondsPerMinute : (absoluteTime.HasMinutes() ? MinutesPerHour * SecondsPerMinute : SecondsPerMinute));
-            slotTime.Add(jump * 100);
+            uint32_t jump ((absoluteTime.HasHours() ? HoursPerDay * MinutesPerHour * SecondsPerMinute :
+                           (absoluteTime.HasMinutes() ? MinutesPerHour * SecondsPerMinute : SecondsPerMinute)) * MilliSecondsPerSecond);
+
+            slotTime.Add(jump);
         }
     }
     else {
-        uint32_t intervalJump = ( (interval.HasHours()   ? interval.Hours() * MinutesPerHour * SecondsPerMinute : 0) +
+        uint32_t intervalJump = ( (interval.HasHours() ? interval.Hours() * MinutesPerHour * SecondsPerMinute : 0) +
                                   (interval.HasMinutes() ? interval.Minutes() * SecondsPerMinute : 0) +
-                                   interval.Seconds() ) * 100;
+                                   interval.Seconds() ) * MilliSecondsPerSecond;
 
         ASSERT (intervalJump != 0);
         if (slotTime >= startTime) {
