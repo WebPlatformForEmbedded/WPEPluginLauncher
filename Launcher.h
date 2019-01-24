@@ -396,7 +396,7 @@ public:
         uint8_t Seconds() const { return _second; }
 
     private:
-        bool Parse(const string& time) {
+        void Parse(const string& time) {
             bool status = true;
             string t = time;
 
@@ -424,8 +424,7 @@ public:
                     if (status  == true) {
 
                         //Check all the time components are still valid
-                        if ((hour != (~0) && second != (~0)) && (minute == (~0))) {
-                            status = false;
+                        if ((hour != static_cast<uint8_t>(~0) && second != static_cast<uint8_t>(~0)) && (minute == static_cast<uint8_t>(~0))) {
                             TRACE(Trace::Information, (_T("Invalid time format")));
                         }
                         else { //Update time components
@@ -436,7 +435,6 @@ public:
                     }
                 }
             }
-            return status;
         }
 
     private:
