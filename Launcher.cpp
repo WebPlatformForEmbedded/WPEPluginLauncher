@@ -97,12 +97,12 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
         time = Time(config.ScheduleTime.Time.Value());
         if (time.IsValid() != true) {
-            SYSLOG(Trace::Warning, (_T("Time format is wrong")));
+            SYSLOG(Trace::Fatal, (_T("Time format is wrong")));
         }
 
         interval = Time(config.ScheduleTime.Interval.Value());
         if (interval.IsValid() != true) {
-            SYSLOG(Trace::Warning, (_T("Interval format is wrong")));
+            SYSLOG(Trace::Fatal, (_T("Interval format is wrong")));
         }
     }
 

@@ -425,7 +425,7 @@ public:
 
                         //Check all the time components are still valid
                         if ((hour != static_cast<uint8_t>(~0) && second != static_cast<uint8_t>(~0)) && (minute == static_cast<uint8_t>(~0))) {
-                            TRACE(Trace::Information, (_T("Invalid time format")));
+                            TRACE_L1(_T("Invalid time format: the given format is HH:.SS"));
                         }
                         else { //Update time components
                             _hour = hour;
