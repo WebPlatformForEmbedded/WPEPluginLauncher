@@ -265,6 +265,63 @@ public:
         Launcher& _parent;
     };
 
+    class MemoryObserverImpl : public Exchange::IMemory {
+    private:
+        MemoryObserverImpl();
+        MemoryObserverImpl(const MemoryObserverImpl&);
+        MemoryObserverImpl& operator=(const MemoryObserverImpl&);
+
+    public:
+        MemoryObserverImpl(const uint32_t id)
+            : _main(id == 0 ? Core::ProcessInfo().Id() : id)
+            , _observable(false)
+        {
+        }
+        ~MemoryObserverImpl()
+        {
+        }
+
+    public:
+        virtual void Observe(const uint32_t pid)
+        {
+            if (pid == 0) {
+                _observable = false;
+             }
+             else {
+                _main = Core::ProcessInfo(pid);
+                _observable = true;
+             }
+        }
+        virtual uint64_t Resident() const
+        {
+            return (_observable == false ? 0 : _main.Resident());
+        }
+        virtual uint64_t Allocated() const
+        {
+            return (_observable == false ? 0 : _main.Allocated());
+        }
+        virtual uint64_t Shared() const
+        {
+            return (_observable == false ? 0 : _main.Shared());
+        }
+        virtual uint8_t Processes() const
+        {
+            return (IsOperational() ? 1 : 0);
+        }
+        virtual const bool IsOperational() const
+        {
+            return (_observable == false) || (_main.IsActive());
+        }
+
+        BEGIN_INTERFACE_MAP(MemoryObserverImpl)
+        INTERFACE_ENTRY(Exchange::IMemory)
+        END_INTERFACE_MAP
+
+    private:
+        Core::ProcessInfo _main;
+        bool _observable;
+    };
+
 public:
     class Config : public Core::JSON::Container {
     private:
@@ -478,7 +535,7 @@ public:
     };
 
 public:
-    class Job: public Core::IDispatchType<void> {
+    class Job: public Core::IDispatchType<void>, public Core::IUnknown {
     private:
         Job() = delete;
         Job(const Job&) = delete;
@@ -490,6 +547,7 @@ public:
             , _pid(0)
             , _options(config->Command.Value().c_str())
             , _process(false)
+            , _memory(nullptr)
             , _interval(interval)
         {
             auto iter = config->Parameters.Elements();
@@ -522,14 +580,20 @@ public:
         uint32_t Pid() {
             return _pid;
         }
+        Exchange::IMemory* Memory() {
+            return _memory;
+        }
         virtual void Dispatch() override
         {
             _hasRun = true;
              // Check if the process is not active, no need to reschedule the same job again.
             if (_process.IsActive() == false) {
 
-                Core::Time currentTime(Core::Time::Now());
                 _process.Launch(_options, &_pid);
+                if (_memory != nullptr) {
+                    _memory->Release();
+                }
+                _memory = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(_pid);
             }
 
             if (_interval.IsValid() == true) {
@@ -545,11 +609,18 @@ public:
             }
         }
 
+    public:
+    BEGIN_INTERFACE_MAP(Job)
+        INTERFACE_AGGREGATE(Exchange::IMemory, _memory)
+    END_INTERFACE_MAP
+
+
     private:
         bool _hasRun;
         uint32_t _pid;
         Core::Process::Options _options;
         Core::Process _process;
+        Exchange::IMemory* _memory;
         Time _interval;
     };
 
@@ -561,7 +632,6 @@ public:
         : _service(nullptr)
         , _closeTime(0)
         , _notification(this)
-        , _memory(nullptr)
         , _activity()
     {
     }
@@ -575,7 +645,6 @@ public:
 public:
     BEGIN_INTERFACE_MAP(Launcher)
         INTERFACE_ENTRY(PluginHost::IPlugin)
-        INTERFACE_AGGREGATE(Exchange::IMemory, _memory)
     END_INTERFACE_MAP
 
 public:
@@ -608,7 +677,6 @@ private:
     PluginHost::IShell* _service;
     uint8_t _closeTime;
     Core::Sink<Notification> _notification;
-    Exchange::IMemory* _memory;
 
     static ProcessObserver _observer;
     Core::ProxyType<Job> _activity;
