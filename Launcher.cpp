@@ -26,6 +26,7 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
     Config config;
 
     ASSERT(_service == nullptr);
+    ASSERT(_memory == nullptr);
 
     // Setup skip URL for right offset.
     _service = service;
@@ -47,7 +48,10 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
         }
     }
 
-    _activity = Core::ProxyType<Job>::Create(&config, interval);
+    _memory = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(0);
+    ASSERT(_memory != nullptr);
+
+    _activity = Core::ProxyType<Job>::Create(&config, interval, _memory);
     if (_activity.IsValid() == true) {
         if (_activity->IsOperational() == false) {
             // Well if we where able to parse the parameters (if needed) we are ready to start it..
@@ -77,13 +81,22 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
             else {
                 PluginHost::WorkerPool::Instance().Submit(_activity);
             }
+
         }
         else {
+            _activity.Release();
             message = _T("Could not parse the configuration for the job.");
         }
     }
     else {
         message = _T("Could not create the job.");
+    }
+
+    if (_activity.IsValid() == false) {
+        if (_memory != nullptr) {
+            _memory->Release();
+            _memory = nullptr;
+        }
     }
 
     return (message);
@@ -92,13 +105,15 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 /* virtual */ void Launcher::Deinitialize(PluginHost::IShell* service)
 {
     ASSERT(_service == service);
+    ASSERT(_memory != nullptr);
 
     PluginHost::WorkerPool::Instance().Revoke(_activity);
 
     _observer.Unregister(&_notification);
 
-    if (_activity->Memory() != nullptr) {
-        _activity->Memory()->Release();
+    if (_memory != nullptr) {
+        _memory->Release();
+        _memory = nullptr;
     }
 
     if (_activity->Process().IsActive() == true) {
@@ -129,7 +144,8 @@ void Launcher::Update(const ProcessObserver::Info& info)
         ASSERT(_service != nullptr);
 
         if (info.Event() == ProcessObserver::Info::EVENT_EXIT) {
-        
+
+            _memory->Observe(0);
             if ((info.ExitCode() & 0xFFFF) == 0) {
                 // Only do this if we do not need a retrigger on an intervall.
                 if (_activity->IsOperational() == false) {

@@ -535,19 +535,19 @@ public:
     };
 
 public:
-    class Job: public Core::IDispatchType<void>, public Core::IUnknown {
+    class Job: public Core::IDispatchType<void> {
     private:
         Job() = delete;
         Job(const Job&) = delete;
         Job& operator=(const Job&) = delete;
 
     public:
-        Job(Config* config, const Time& interval)
+        Job(Config* config, const Time& interval, Exchange::IMemory* memory)
             : _hasRun(false)
             , _pid(0)
             , _options(config->Command.Value().c_str())
             , _process(false)
-            , _memory(nullptr)
+            , _memory(memory)
             , _interval(interval)
         {
             auto iter = config->Parameters.Elements();
@@ -580,9 +580,6 @@ public:
         uint32_t Pid() {
             return _pid;
         }
-        Exchange::IMemory* Memory() {
-            return _memory;
-        }
         virtual void Dispatch() override
         {
             _hasRun = true;
@@ -591,9 +588,8 @@ public:
 
                 _process.Launch(_options, &_pid);
                 if (_memory != nullptr) {
-                    _memory->Release();
+                    _memory->Observe(_pid);
                 }
-                _memory = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(_pid);
             }
 
             if (_interval.IsValid() == true) {
@@ -608,12 +604,6 @@ public:
                 _hasRun = false;
             }
         }
-
-    public:
-    BEGIN_INTERFACE_MAP(Job)
-        INTERFACE_AGGREGATE(Exchange::IMemory, _memory)
-    END_INTERFACE_MAP
-
 
     private:
         bool _hasRun;
@@ -632,6 +622,7 @@ public:
         : _service(nullptr)
         , _closeTime(0)
         , _notification(this)
+        , _memory(nullptr)
         , _activity()
     {
     }
@@ -645,6 +636,7 @@ public:
 public:
     BEGIN_INTERFACE_MAP(Launcher)
         INTERFACE_ENTRY(PluginHost::IPlugin)
+        INTERFACE_AGGREGATE(Exchange::IMemory, _memory)
     END_INTERFACE_MAP
 
 public:
@@ -677,6 +669,7 @@ private:
     PluginHost::IShell* _service;
     uint8_t _closeTime;
     Core::Sink<Notification> _notification;
+    Exchange::IMemory* _memory;
 
     static ProcessObserver _observer;
     Core::ProxyType<Job> _activity;
