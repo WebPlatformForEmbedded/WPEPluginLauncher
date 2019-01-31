@@ -265,6 +265,63 @@ public:
         Launcher& _parent;
     };
 
+    class MemoryObserverImpl : public Exchange::IMemory {
+    private:
+        MemoryObserverImpl();
+        MemoryObserverImpl(const MemoryObserverImpl&);
+        MemoryObserverImpl& operator=(const MemoryObserverImpl&);
+
+    public:
+        MemoryObserverImpl(const uint32_t id)
+            : _main(id == 0 ? Core::ProcessInfo().Id() : id)
+            , _observable(false)
+        {
+        }
+        ~MemoryObserverImpl()
+        {
+        }
+
+    public:
+        virtual void Observe(const uint32_t pid)
+        {
+            if (pid == 0) {
+                _observable = false;
+             }
+             else {
+                _main = Core::ProcessInfo(pid);
+                _observable = true;
+             }
+        }
+        virtual uint64_t Resident() const
+        {
+            return (_observable == false ? 0 : _main.Resident());
+        }
+        virtual uint64_t Allocated() const
+        {
+            return (_observable == false ? 0 : _main.Allocated());
+        }
+        virtual uint64_t Shared() const
+        {
+            return (_observable == false ? 0 : _main.Shared());
+        }
+        virtual uint8_t Processes() const
+        {
+            return (IsOperational() ? 1 : 0);
+        }
+        virtual const bool IsOperational() const
+        {
+            return (_observable == false) || (_main.IsActive());
+        }
+
+        BEGIN_INTERFACE_MAP(MemoryObserverImpl)
+        INTERFACE_ENTRY(Exchange::IMemory)
+        END_INTERFACE_MAP
+
+    private:
+        Core::ProcessInfo _main;
+        bool _observable;
+    };
+
 public:
     class Config : public Core::JSON::Container {
     private:
@@ -485,11 +542,12 @@ public:
         Job& operator=(const Job&) = delete;
 
     public:
-        Job(Config* config, const Time& interval)
+        Job(Config* config, const Time& interval, Exchange::IMemory* memory)
             : _hasRun(false)
             , _pid(0)
             , _options(config->Command.Value().c_str())
             , _process(false)
+            , _memory(memory)
             , _interval(interval)
         {
             auto iter = config->Parameters.Elements();
@@ -528,8 +586,10 @@ public:
              // Check if the process is not active, no need to reschedule the same job again.
             if (_process.IsActive() == false) {
 
-                Core::Time currentTime(Core::Time::Now());
                 _process.Launch(_options, &_pid);
+                if (_memory != nullptr) {
+                    _memory->Observe(_pid);
+                }
             }
 
             if (_interval.IsValid() == true) {
@@ -550,6 +610,7 @@ public:
         uint32_t _pid;
         Core::Process::Options _options;
         Core::Process _process;
+        Exchange::IMemory* _memory;
         Time _interval;
     };
 

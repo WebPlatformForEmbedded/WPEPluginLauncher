@@ -15,64 +15,6 @@ namespace Plugin {
 
 SERVICE_REGISTRATION(Launcher, 1, 0);
 
-    class MemoryObserverImpl : public Exchange::IMemory {
-    private:
-        MemoryObserverImpl();
-        MemoryObserverImpl(const MemoryObserverImpl&);
-        MemoryObserverImpl& operator=(const MemoryObserverImpl&);
-
-    public:
-        MemoryObserverImpl(const uint32_t id)
-            : _main(id == 0 ? Core::ProcessInfo().Id() : id)
-            , _observable(false)
-        {
-        }
-        ~MemoryObserverImpl()
-        {
-        }
-
-    public:
-        virtual void Observe(const uint32_t pid)
-        {
-            if (pid == 0) {
-                _observable = false;
-             }
-             else {
-                _main = Core::ProcessInfo(pid);
-                _observable = true;
-             }
-        }
-        virtual uint64_t Resident() const
-        {
-            return (_observable == false ? 0 : _main.Resident());
-        }
-        virtual uint64_t Allocated() const
-        {
-            return (_observable == false ? 0 : _main.Allocated());
-        }
-        virtual uint64_t Shared() const
-        {
-            return (_observable == false ? 0 : _main.Shared());
-        }
-        virtual uint8_t Processes() const
-        {
-            return (IsOperational() ? 1 : 0);
-        }
-        virtual const bool IsOperational() const
-        {
-            return (_observable == false) || (_main.IsActive());
-        }
-
-        BEGIN_INTERFACE_MAP(MemoryObserverImpl)
-        INTERFACE_ENTRY(Exchange::IMemory)
-        END_INTERFACE_MAP
-
-    private:
-        Core::ProcessInfo _main;
-        bool _observable;
-    };
-
-
 /* static */ Launcher::ProcessObserver Launcher::_observer;
 
 /* virtual */ const string Launcher::Initialize(PluginHost::IShell* service)
@@ -106,7 +48,10 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
         }
     }
 
-    _activity = Core::ProxyType<Job>::Create(&config, interval);
+    _memory = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(0);
+    ASSERT(_memory != nullptr);
+
+    _activity = Core::ProxyType<Job>::Create(&config, interval, _memory);
     if (_activity.IsValid() == true) {
         if (_activity->IsOperational() == false) {
             // Well if we where able to parse the parameters (if needed) we are ready to start it..
@@ -136,13 +81,22 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
             else {
                 PluginHost::WorkerPool::Instance().Submit(_activity);
             }
+
         }
         else {
+            _activity.Release();
             message = _T("Could not parse the configuration for the job.");
         }
     }
     else {
         message = _T("Could not create the job.");
+    }
+
+    if (_activity.IsValid() == false) {
+        if (_memory != nullptr) {
+            _memory->Release();
+            _memory = nullptr;
+        }
     }
 
     return (message);
@@ -152,6 +106,8 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 {
     ASSERT(_service == service);
     ASSERT(_memory != nullptr);
+
+    PluginHost::WorkerPool::Instance().Revoke(_activity);
 
     _observer.Unregister(&_notification);
 
@@ -188,7 +144,8 @@ void Launcher::Update(const ProcessObserver::Info& info)
         ASSERT(_service != nullptr);
 
         if (info.Event() == ProcessObserver::Info::EVENT_EXIT) {
-        
+
+            _memory->Observe(0);
             if ((info.ExitCode() & 0xFFFF) == 0) {
                 // Only do this if we do not need a retrigger on an intervall.
                 if (_activity->IsOperational() == false) {
