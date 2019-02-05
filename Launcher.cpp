@@ -33,6 +33,8 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
     config.FromString(_service->ConfigLine());
 
+    _closeTime = (config.CloseTime.Value());
+
     if (config.ScheduleTime.IsSet() == true) {
 
         timeMode = config.ScheduleTime.Mode.Value();
@@ -115,7 +117,6 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
         _memory->Release();
         _memory = nullptr;
     }
-
     if (_activity->Process().IsActive() == true) {
         // First try a gentle touch....
         _activity->Process().Kill(false);
@@ -123,6 +124,7 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
         // Wait for a maximum of 3 Seconds before we shoot the process!!
         if (_activity->Process().WaitProcessCompleted(_closeTime * 1000) != Core::ERROR_NONE) {
             _activity->Process().Kill(true);
+            _activity->Process().WaitProcessCompleted(_closeTime * 1000);
         }
     }
 
