@@ -134,7 +134,24 @@ Note:
    i.e, if the absolute time given is 04:00:00, current time is 05:10:00 and interval is 00:30:00, then next scheduling time will be 05:30:00 (will be identified from the next intervals - 04:30:00, 05:00:00, 05:30:00)
 3. If mode is relative or absolute, the interval time will be taken only for the subsequent scheduling
 
-# How to launch multiple scripts/applcations
+### How to set wait time for the process to complete properly during the deactivation.
+  add closetime parameter into the json with the average closing time for the script or application. This will wait till that configured time for a clean exit of process/script.
+
+   ```
+   {
+      "locator":"libWPEFrameworkLauncher.so",
+      "classname":"Launcher",
+      "precondition":[
+        "Platform"
+      ],
+      "autostart":true,
+      "configuration": {
+        "command":"du",
+        "closetime":5
+      }
+   }
+   ```
+### How to launch multiple scripts/applcations
 
 E.g.
 ``` testapp1, testapp2 and testapp3 are the three applications to be run ```
