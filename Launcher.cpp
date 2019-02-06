@@ -33,67 +33,72 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
     config.FromString(_service->ConfigLine());
 
-    _closeTime = (config.CloseTime.Value());
+    if ((config.Command.IsSet() == true) && (config.Command.Value().empty() == false)) {
+        _closeTime = (config.CloseTime.Value());
 
-    if (config.ScheduleTime.IsSet() == true) {
+        if (config.ScheduleTime.IsSet() == true) {
 
-        timeMode = config.ScheduleTime.Mode.Value();
+            timeMode = config.ScheduleTime.Mode.Value();
 
-        time = Time(config.ScheduleTime.Time.Value());
-        if (time.IsValid() != true) {
-            SYSLOG(Trace::Fatal, (_T("Time format is wrong")));
+            time = Time(config.ScheduleTime.Time.Value());
+            if (time.IsValid() != true) {
+                SYSLOG(Trace::Fatal, (_T("Time format is wrong")));
+            }
+
+            interval = Time(config.ScheduleTime.Interval.Value());
+            if (interval.IsValid() != true) {
+                SYSLOG(Trace::Fatal, (_T("Interval format is wrong")));
+            }
         }
 
-        interval = Time(config.ScheduleTime.Interval.Value());
-        if (interval.IsValid() != true) {
-            SYSLOG(Trace::Fatal, (_T("Interval format is wrong")));
-        }
-    }
+        _memory = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(0);
+        ASSERT(_memory != nullptr);
 
-    _memory = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(0);
-    ASSERT(_memory != nullptr);
+        _activity = Core::ProxyType<Job>::Create(&config, interval, _memory);
+        if (_activity.IsValid() == true) {
+            if (_activity->IsOperational() == false) {
+                // Well if we where able to parse the parameters (if needed) we are ready to start it..
+                _observer.Register(&_notification);
+                Core::Time scheduledTime;
+                if (time.IsValid() == true) {
+                    if (timeMode == RELATIVE) { //Schedule Job at relative timing
+                        scheduledTime = Core::Time::Now();
 
-    _activity = Core::ProxyType<Job>::Create(&config, interval, _memory);
-    if (_activity.IsValid() == true) {
-        if (_activity->IsOperational() == false) {
-            // Well if we where able to parse the parameters (if needed) we are ready to start it..
-            _observer.Register(&_notification);
-            Core::Time scheduledTime;
-            if (time.IsValid() == true) {
-                if (timeMode == RELATIVE) { //Schedule Job at relative timing
-                    scheduledTime = Core::Time::Now();
+                        uint64_t timeValueToTrigger = (((time.HasHours() ? time.Hours(): 0) * MinutesPerHour +
+                                                        (time.HasMinutes() ? time.Minutes(): 0)) * SecondsPerMinute + time.Seconds()) * MilliSecondsPerSecond;
+                        scheduledTime.Add(timeValueToTrigger);
 
-
-                    uint64_t timeValueToTrigger = (((time.HasHours() ? time.Hours(): 0) * MinutesPerHour +
-                                                    (time.HasMinutes() ? time.Minutes(): 0)) * SecondsPerMinute + time.Seconds()) * MilliSecondsPerSecond;
-                    scheduledTime.Add(timeValueToTrigger);
-
-                }
-                else {
-                    //Schedule Job at absolute timing
-                    if (timeMode == ABSOLUTE_WITH_INTERVAL) {
-                        scheduledTime = FindAbsoluteTimeForSchedule(time, interval);
                     }
                     else {
-                        scheduledTime = FindAbsoluteTimeForSchedule(time, Time());
+                        //Schedule Job at absolute timing
+                        if (timeMode == ABSOLUTE_WITH_INTERVAL) {
+                            scheduledTime = FindAbsoluteTimeForSchedule(time, interval);
+                        }
+                        else {
+                            scheduledTime = FindAbsoluteTimeForSchedule(time, Time());
+                        }
                     }
+                    PluginHost::WorkerPool::Instance().Schedule(scheduledTime, _activity);
                 }
-                PluginHost::WorkerPool::Instance().Schedule(scheduledTime, _activity);
+                else {
+                    PluginHost::WorkerPool::Instance().Submit(_activity);
+                }
+
             }
             else {
-                PluginHost::WorkerPool::Instance().Submit(_activity);
+                _activity.Release();
+                message = _T("Could not parse the configuration for the job.");
             }
-
         }
         else {
-            _activity.Release();
-            message = _T("Could not parse the configuration for the job.");
+            message = _T("Could not create the job.");
         }
     }
     else {
-        message = _T("Could not create the job.");
+        message = _T("Command is not set");
+        SYSLOG(Trace::Fatal, (message.c_str()));
+        TRACE_L1(message.c_str());
     }
-
     if (_activity.IsValid() == false) {
         if (_memory != nullptr) {
             _memory->Release();
