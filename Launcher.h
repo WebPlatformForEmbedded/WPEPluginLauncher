@@ -221,7 +221,6 @@ public:
 
     private:
         void Received (const Info& info) {
-
             if (!_callbacks.empty()) {
                 _adminLock.Lock();
 
@@ -238,7 +237,6 @@ public:
         Channel _channel;
         std::vector<IProcessState*> _callbacks;
     };
-
 
     class Notification : public ProcessObserver::IProcessState {
     private:
@@ -413,11 +411,6 @@ public:
     };
 
     private:
-    static constexpr uint32_t MilliSecondsPerSecond = 1000;
-    static constexpr uint32_t SecondsPerMinute = 60;
-    static constexpr uint32_t MinutesPerHour = 60;
-    static constexpr uint32_t HoursPerDay = 24;
-
     class Time {
     public:
         Time()
@@ -443,6 +436,11 @@ public:
         {
         }
 
+        static constexpr uint32_t MilliSecondsPerSecond = 1000;
+        static constexpr uint32_t SecondsPerMinute = 60;
+        static constexpr uint32_t MinutesPerHour = 60;
+        static constexpr uint32_t HoursPerDay = 24;
+
     public:
         bool IsValid () const { return (HasSeconds() || HasMinutes() || HasHours()); }
         bool HasHours() const { return (_hour < HoursPerDay); }
@@ -451,6 +449,11 @@ public:
         uint8_t Hours() const { return _hour; }
         uint8_t Minutes() const { return _minute; }
         uint8_t Seconds() const { return _second; }
+        uint32_t TimeInSeconds() const {
+            return ( (HasHours() ? Hours() : 0) * MinutesPerHour * SecondsPerMinute + 
+                     (HasMinutes() ? Minutes() : 0) * SecondsPerMinute + 
+                      Seconds() );
+        }
 
     private:
         void Parse(const string& time) {
@@ -543,12 +546,14 @@ public:
 
     public:
         Job(Config* config, const Time& interval, Exchange::IMemory* memory)
-            : _hasRun(false)
+            : _adminLock()
             , _pid(0)
             , _options(config->Command.Value().c_str())
             , _process(false)
             , _memory(memory)
             , _interval(interval)
+            , _closeTime(config->CloseTime.Value())
+            , _shutdownPhase(0)
         {
             auto iter = config->Parameters.Elements();
 
@@ -564,54 +569,88 @@ public:
                     }
                 }
             }
+            _memory->AddRef();
         }
         ~Job()
         {
+            _memory->Release();
         }
 
     public:
-        bool IsOperational() const {
-
-            return ((_hasRun == true) && (_interval.IsValid() == true));
+        uint32_t ExitCode() {
+            return (_process.IsActive() == false ? _process.ExitCode() : Core::ERROR_NONE);
         }
-        Core::Process& Process() {
-            return (_process);
+        bool Continuous() const {
+            return (_interval.IsValid() == true);
         }
         uint32_t Pid() {
             return _pid;
         }
-        virtual void Dispatch() override
-        {
-            _hasRun = true;
-             // Check if the process is not active, no need to reschedule the same job again.
-            if (_process.IsActive() == false) {
-
-                _process.Launch(_options, &_pid);
-                if (_memory != nullptr) {
-                    _memory->Observe(_pid);
-                }
-            }
-
-            if (_interval.IsValid() == true) {
-                // Reschedule our next launch point...
-                Core::Time scheduledTime(Core::Time::Now());
-                uint64_t intervalTime = (((_interval.HasHours() ? _interval.Hours(): 0) * MinutesPerHour +
-                                          (_interval.HasMinutes() ? _interval.Minutes():0)) * SecondsPerMinute + _interval.Seconds()) * MilliSecondsPerSecond;
-                scheduledTime.Add(intervalTime);
-                PluginHost::WorkerPool::Instance().Schedule(scheduledTime,Core::ProxyType<Core::IDispatch>(*this));
+        void Schedule (const Core::Time& time) {
+            if (time <= Core::Time::Now()) {
+                PluginHost::WorkerPool::Instance().Submit(Core::ProxyType<Core::IDispatch>(*this));
             }
             else {
-                _hasRun = false;
+                PluginHost::WorkerPool::Instance().Schedule(time, Core::ProxyType<Core::IDispatch>(*this));
+            }
+        }
+        void Shutdown () {
+            _adminLock.Lock();
+            _shutdownPhase = 1;
+            _adminLock.Lock();
+
+            PluginHost::WorkerPool::Instance().Revoke(Core::ProxyType<Core::IDispatch>(*this));
+
+            if (_process.IsActive() == true) {
+
+                // First try a gentle touch....
+                _process.Kill(false);
+
+               // Wait for a maximum configured wait time before we shoot the process!!
+               if (_process.WaitProcessCompleted(_closeTime * 1000) != Core::ERROR_NONE) {
+                   _process.Kill(true);
+                   _process.WaitProcessCompleted(1000);
+               }
             }
         }
 
     private:
-        bool _hasRun;
+        virtual void Dispatch() override
+        {
+            // Let limit the jitter on the next run, if required..
+            Core::Time nextRun (Core::Time::Now());
+
+             // Check if the process is not active, no need to reschedule the same job again.
+            if (_process.IsActive() == false) {
+
+                _process.Launch(_options, &_pid);
+
+                TRACE(Trace::Information, (_T("Launched command: %s [%d]."), _options.Command().c_str(), _pid));
+                ASSERT (_memory != nullptr);
+
+                _memory->Observe(_pid);
+            }
+
+            if (_interval.IsValid() == true) {
+                _adminLock.Lock();
+                if (_shutdownPhase == 0) {
+                    // Reschedule our next launch point...
+                    nextRun.Add(_interval.TimeInSeconds() * Time::MilliSecondsPerSecond);
+                    PluginHost::WorkerPool::Instance().Schedule(nextRun, Core::ProxyType<Core::IDispatch>(*this));
+                }
+                _adminLock.Unlock();
+            }
+        }
+
+    private:
+        Core::CriticalSection _adminLock;
         uint32_t _pid;
         Core::Process::Options _options;
         Core::Process _process;
         Exchange::IMemory* _memory;
         Time _interval;
+        uint8_t _closeTime;
+        uint8_t _shutdownPhase;
     };
 
 public:
@@ -620,9 +659,8 @@ public:
 #endif
     Launcher()
         : _service(nullptr)
-        , _closeTime(0)
-        , _notification(this)
         , _memory(nullptr)
+        , _notification(this)
         , _activity()
     {
     }
@@ -662,17 +700,15 @@ public:
 
 private:
     void Update(const ProcessObserver::Info& info);
-    bool Execute();
-    Core::Time FindAbsoluteTimeForSchedule(const Time& absoluteTime, const Time& interval);
+    bool ScheduleParameters(const Config& config, string& message, Core::Time& scheduleTime, Time& interval);
 
 private:
     PluginHost::IShell* _service;
-    uint8_t _closeTime;
-    Core::Sink<Notification> _notification;
     Exchange::IMemory* _memory;
+    Core::Sink<Notification> _notification;
+    Core::ProxyType<Job> _activity;
 
     static ProcessObserver _observer;
-    Core::ProxyType<Job> _activity;
 };
 
 } //namespace Plugin
