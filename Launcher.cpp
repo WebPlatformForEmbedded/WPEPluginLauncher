@@ -56,7 +56,7 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 {
     ASSERT(_service == service);
     ASSERT(_memory != nullptr);
-    ASSERT(_acitivity.IsValid() == true);
+    ASSERT(_activity.IsValid() == true);
 
     _memory->Observe(0);
     _observer.Unregister(&_notification);
