@@ -597,7 +597,7 @@ public:
         void Shutdown () {
             _adminLock.Lock();
             _shutdownPhase = 1;
-            _adminLock.Lock();
+            _adminLock.Unlock();
 
             PluginHost::WorkerPool::Instance().Revoke(Core::ProxyType<Core::IDispatch>(*this));
 
