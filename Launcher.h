@@ -550,7 +550,6 @@ public:
     public:
         Job(Config* config, const Time& interval, Exchange::IMemory* memory)
             : _adminLock()
-            , _pid(0)
             , _options(config->Command.Value().c_str())
             , _process(false)
             , _memory(memory)
@@ -558,6 +557,7 @@ public:
             , _closeTime(config->CloseTime.Value())
             , _shutdownPhase(0)
             , _processListEmpty(1, 1)
+            , _shutdownCompleted(false)
         {
             auto iter = config->Parameters.Elements();
 
@@ -604,7 +604,7 @@ public:
                      _processList.push_back(info.ChildId());
 
                      if (_shutdownPhase == 2) {
-                         ::kill(pid, SIGKILL);
+                         ::kill(info.ChildId(), SIGKILL);
                      }
                  }
 
@@ -617,15 +617,15 @@ public:
 
                 ProcessList::iterator position (std::find(_processList.begin(), _processList.end(), info.Id()));
                 if (position != _processList.end()) {
-                    _position.erase(position);
-                    if ( (_position.Id() == _pid) && (_process.IsActive() == false) ) {
+                    _processList.erase(position);
+                    if ( (info.Id() ==_processList.front()) && (_process.IsActive() == false) ) {
                         _memory->Observe(0);
                     }
                     else {
                         // TODO: Probably might need to add the read exit code here for any process that exits to prevent
                         //       Zombie processes here..
                     }
-                    if (_position.size() == 0) {
+                    if (_processList.size() == 0) {
                         _processListEmpty.Unlock();
                     }
                 }
@@ -672,6 +672,7 @@ public:
                 }
  
                 _adminLock.Unlock();
+                _process.WaitProcessCompleted(1000);
             }
 
             if (_processListEmpty.Lock(1000) != Core::ERROR_NONE) {
@@ -692,18 +693,18 @@ public:
             Core::Time nextRun (Core::Time::Now());
 
              // Check if the process is not active, no need to reschedule the same job again.
-            if ( (_process.IsActive() == false) && (_shutdownCompleted.Lock(0) != Core::ERROR_NONE) ) {
+            if ( (_process.IsActive() == false) && (_shutdownCompleted.Lock(0) == Core::ERROR_NONE) ) {
 
                 ASSERT (_processList.size() == 0);
 
                 _processList.push_back(0);
-
                 _process.Launch(_options, &_processList.front());
 
                 TRACE(Trace::Information, (_T("Launched command: %s [%d]."), _options.Command().c_str(), Pid()));
                 ASSERT (_memory != nullptr);
 
                 _memory->Observe(Pid());
+                _shutdownCompleted.Unlock();
             }
 
             if (_interval.IsValid() == true) {
@@ -726,7 +727,8 @@ public:
         uint8_t _closeTime;
         uint8_t _shutdownPhase;
         ProcessList _processList;
-        Core::BinairySamaphore _shutdownCompleted;
+        Core::Event _processListEmpty;
+        Core::BinairySemaphore _shutdownCompleted;
     };
 
 public:
