@@ -738,6 +738,7 @@ public:
         , _memory(nullptr)
         , _notification(this)
         , _activity()
+        , _deactivationInProgress()
     {
     }
 #ifdef __WIN32__
@@ -783,6 +784,7 @@ private:
     Exchange::IMemory* _memory;
     Core::Sink<Notification> _notification;
     Core::ProxyType<Job> _activity;
+    bool _deactivationInProgress;
 
     static ProcessObserver _observer;
 };
