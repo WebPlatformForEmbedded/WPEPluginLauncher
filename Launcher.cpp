@@ -30,6 +30,7 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
     // Setup skip URL for right offset.
     _service = service;
+    _deactivationInProgress = false;
 
     config.FromString(_service->ConfigLine());
 
@@ -58,10 +59,12 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
     ASSERT(_memory != nullptr);
     ASSERT(_activity.IsValid() == true);
 
+    _deactivationInProgress = true;
+
     _memory->Observe(0);
-    _observer.Unregister(&_notification);
 
     _activity->Shutdown();
+    _observer.Unregister(&_notification);
     _activity.Release();
 
     _memory->Release();
@@ -84,21 +87,30 @@ void Launcher::Update(const ProcessObserver::Info& info)
 
     // This can potentially be called on a socket thread, so the deactivation (wich in turn kills this object) must be done
     // on a seperate thread. Also make sure this call-stack can be unwound before we are totally destructed.
-    if ( (_activity->Pid() == info.Id()) && (info.Event() == ProcessObserver::Info::EVENT_EXIT) ) { 
+    if (_activity->IsActive() == true) {
 
-        _memory->Observe(0);
-        uint32_t result = _activity->ExitCode();
+        _activity->Update(info);
 
-        if (result != Core::ERROR_NONE) {
-            SYSLOG(Trace::Fatal, (_T("FORCED Shutdown: %s by error: %d."), _service->Callsign().c_str(), result));
-            PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
-        }
-        else if (_activity->Continuous() == false) {
-            TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, deactivation requested."), _service->Callsign().c_str()));
-            PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::AUTOMATIC));
-        }
-        else {
-            TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, scheduled for the next run."), _service->Callsign().c_str()));
+        if (_activity->IsActive() == false) {
+            uint32_t result = _activity->ExitCode();
+
+            if (result != Core::ERROR_NONE) {
+                if (_deactivationInProgress == false) {
+                    _deactivationInProgress = true;
+                    SYSLOG(Trace::Fatal, (_T("FORCED Shutdown: %s by error: %d."), _service->Callsign().c_str(), result));
+                    PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
+                }
+            }
+            else if (_activity->Continuous() == false) {
+                if (_deactivationInProgress == false) {
+                    _deactivationInProgress = true;
+                    TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, deactivation requested."), _service->Callsign().c_str()));
+                    PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::AUTOMATIC));
+                }
+            }
+            else {
+                TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, scheduled for the next run."), _service->Callsign().c_str()));
+            }
         }
     }
 }
@@ -125,6 +137,7 @@ bool Launcher::ScheduleParameters(const Config& config, string& message, Core::T
         }
         else if ( (timeMode == ABSOLUTE_WITH_INTERVAL) && ((interval.IsValid() == false) || (interval.TimeInSeconds() == 0)) ) {
             message = _T("Requested mode is ABSOLUTE WITH INTERVAL but no interval (or 0 second interval) is given.");
+
         }
         else {
             // All signals green, we have valid input, calculate the ScheduleTime/Interval time

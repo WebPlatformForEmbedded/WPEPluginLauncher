@@ -3,6 +3,7 @@
 #include "Module.h"
 #include <interfaces/IMemory.h>
 #include <linux/cn_proc.h>
+#include <vector>
 
 namespace WPEFramework {
 namespace Plugin {
@@ -544,16 +545,19 @@ public:
         Job(const Job&) = delete;
         Job& operator=(const Job&) = delete;
 
+        typedef std::vector<uint32_t> ProcessList;
+
     public:
         Job(Config* config, const Time& interval, Exchange::IMemory* memory)
             : _adminLock()
-            , _pid(0)
             , _options(config->Command.Value().c_str())
             , _process(false)
             , _memory(memory)
             , _interval(interval)
             , _closeTime(config->CloseTime.Value())
             , _shutdownPhase(0)
+            , _processListEmpty(1, 1)
+            , _shutdownCompleted(false)
         {
             auto iter = config->Parameters.Elements();
 
@@ -580,11 +584,58 @@ public:
         uint32_t ExitCode() {
             return (_process.IsActive() == false ? _process.ExitCode() : Core::ERROR_NONE);
         }
+        bool IsActive() const {
+            return (_processList.size() > 0);
+        }
         bool Continuous() const {
             return (_interval.IsValid() == true);
         }
         uint32_t Pid() {
-            return _pid;
+            return (_processList.front());
+        }
+        void Update (const ProcessObserver::Info& info) {
+            switch (info.Event()) {
+            case ProcessObserver::Info::EVENT_FORK:
+            {
+                 _adminLock.Lock();
+
+                 ProcessList::iterator position (std::find(_processList.begin(), _processList.end(), info.Id()));
+                 if (position != _processList.end()) {
+                     _processList.push_back(info.ChildId());
+
+                     if (_shutdownPhase == 2) {
+                         ::kill(info.ChildId(), SIGKILL);
+                     }
+                 }
+
+                 _adminLock.Unlock();
+                 break;
+            }
+            case ProcessObserver::Info::EVENT_EXIT:
+            {
+                _adminLock.Lock();
+
+                ProcessList::iterator position (std::find(_processList.begin(), _processList.end(), info.Id()));
+                if (position != _processList.end()) {
+                    _processList.erase(position);
+                    if ( (info.Id() ==_processList.front()) && (_process.IsActive() == false) ) {
+                        _memory->Observe(0);
+                    }
+                    else {
+                        // TODO: Probably might need to add the read exit code here for any process that exits to prevent
+                        //       Zombie processes here..
+                    }
+                    if (_processList.size() == 0) {
+                        _processListEmpty.Unlock();
+                    }
+                }
+
+                _adminLock.Unlock();
+                break;
+            }
+            default:
+                break;
+            }
         }
         void Schedule (const Core::Time& time) {
             if (time <= Core::Time::Now()) {
@@ -600,18 +651,39 @@ public:
             _adminLock.Unlock();
 
             PluginHost::WorkerPool::Instance().Revoke(Core::ProxyType<Core::IDispatch>(*this));
-
             if (_process.IsActive() == true) {
 
                 // First try a gentle touch....
                 _process.Kill(false);
 
                // Wait for a maximum configured wait time before we shoot the process!!
-               if (_process.WaitProcessCompleted(_closeTime * 1000) != Core::ERROR_NONE) {
-                   _process.Kill(true);
-                   _process.WaitProcessCompleted(1000);
-               }
+               _process.WaitProcessCompleted(_closeTime * 1000);
             }
+
+            // If there was a proper shutdown, all assoicated processes should have left. 
+            // If not, we will start doing it the rude way!!
+            if (_processList.size() != 0) {
+                _adminLock.Lock();
+                _shutdownPhase = 2;
+
+                TRACE_L1("Trying to force kill\n");
+                for (int i = 0; i < _processList.size(); i++) {
+                    ::kill(_processList[i], SIGKILL);
+                }
+ 
+                _adminLock.Unlock();
+                _process.WaitProcessCompleted(1000);
+            }
+
+            if (_processListEmpty.Lock(1000) != Core::ERROR_NONE) {
+                TRACE(Trace::Fatal, (_T("Could not kill all spawned processes for: %s."), _options.Command().c_str()));
+                _processList.clear();
+            }
+
+            _adminLock.Lock();
+            _processListEmpty.Unlock();            
+            _shutdownPhase = 0;
+            _adminLock.Unlock();
         }
 
     private:
@@ -621,14 +693,18 @@ public:
             Core::Time nextRun (Core::Time::Now());
 
              // Check if the process is not active, no need to reschedule the same job again.
-            if (_process.IsActive() == false) {
+            if ( (_process.IsActive() == false) && (_shutdownCompleted.Lock(0) == Core::ERROR_NONE) ) {
 
-                _process.Launch(_options, &_pid);
+                ASSERT (_processList.size() == 0);
 
-                TRACE(Trace::Information, (_T("Launched command: %s [%d]."), _options.Command().c_str(), _pid));
+                _processList.push_back(0);
+                _process.Launch(_options, &_processList.front());
+
+                TRACE(Trace::Information, (_T("Launched command: %s [%d]."), _options.Command().c_str(), Pid()));
                 ASSERT (_memory != nullptr);
 
-                _memory->Observe(_pid);
+                _memory->Observe(Pid());
+                _shutdownCompleted.Unlock();
             }
 
             if (_interval.IsValid() == true) {
@@ -644,13 +720,15 @@ public:
 
     private:
         Core::CriticalSection _adminLock;
-        uint32_t _pid;
         Core::Process::Options _options;
         Core::Process _process;
         Exchange::IMemory* _memory;
         Time _interval;
         uint8_t _closeTime;
         uint8_t _shutdownPhase;
+        ProcessList _processList;
+        Core::Event _processListEmpty;
+        Core::BinairySemaphore _shutdownCompleted;
     };
 
 public:
@@ -662,6 +740,7 @@ public:
         , _memory(nullptr)
         , _notification(this)
         , _activity()
+        , _deactivationInProgress()
     {
     }
 #ifdef __WIN32__
@@ -707,6 +786,7 @@ private:
     Exchange::IMemory* _memory;
     Core::Sink<Notification> _notification;
     Core::ProxyType<Job> _activity;
+    bool _deactivationInProgress;
 
     static ProcessObserver _observer;
 };

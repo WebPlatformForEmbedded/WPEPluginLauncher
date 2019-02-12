@@ -77,7 +77,7 @@ Plugin to "Launch" linux applications and scripts
 
 Note:
 1. If field "mode" is empty or not set, it will treat the time as relative
-2. If relative time value is "00:00.00"/invalid format/not set, the launcher will ignore the given time and launch the application at the launcher activation time itself.
+2. If relative time value is "00:00.00"/not set, the launcher will ignore the given time and launch the application at the launcher activation time itself.
 3. If time format given is
   a. "XX", treat it as SS
   b. "XX.XX" treat it as MM.SS
@@ -100,7 +100,7 @@ Note:
    ```
 
 Note:
-1. If absolute time value is invalid format/not set, the launcher will ignore the given time and launch the application at the launcher activation time itself.
+1. If absolute time value is not set, the launcher will ignore the given time and launch the application at the launcher activation time itself.
 2. If time format given is
    a. "XX", treat it as SS, and schedule the application launch at next SSth time. i.e. if absolute time given is 25 and current time is 08:10:45, then the application will be
       launched at 08:11:25
