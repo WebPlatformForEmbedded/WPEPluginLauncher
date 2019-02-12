@@ -89,11 +89,7 @@ void Launcher::Update(const ProcessObserver::Info& info)
         switch (info.Event()) {
         case ProcessObserver::Info::EVENT_FORK:
             TRACE(Trace::Information, (_T("FORK: parent tid=%d pid=%d -> child tid=%d pid=%d\n"), info.Id(), info.Group(), info.ChildId(), info.ChildGroup()));
-            if (_activity->ShutdownInProgress() == false) {
-                _activity->AddPid(info.ChildId());
-            } else {
-                _activity->Kill(info.ChildId());
-            }
+            _activity->AddPid(info.ChildId());
             break;
         case ProcessObserver::Info::EVENT_EXEC:
             TRACE(Trace::Information, (_T("EXEC: tid=%d pid=%d\n"), info.Id(), info.Group()));

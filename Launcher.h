@@ -557,6 +557,7 @@ public:
             , _interval(interval)
             , _closeTime(config->CloseTime.Value())
             , _shutdownPhase(0)
+            , _waitEvent(true, false)
         {
             auto iter = config->Parameters.Elements();
 
@@ -590,8 +591,12 @@ public:
             return _pid;
         }
         bool ShutdownInProgress() {
-            return _shutdownPhase;
-        }
+            bool status = false;
+            _adminLock.Lock();
+            status = _shutdownPhase;
+            _adminLock.Unlock();
+            return status;
+	}
         void Kill(uint32_t pid) {
            ::kill(pid, SIGKILL);
         }
@@ -603,8 +608,13 @@ public:
         }
         void AddPid(uint32_t pid) {
             _adminLock.Lock();
-            ASSERT(std::find(_processList.begin(), _processList.end(), pid) == _processList.end());
-            _processList.push_back(pid);
+            if (!_shutdownPhase) {
+                ASSERT(std::find(_processList.begin(), _processList.end(), pid) == _processList.end());
+                _processList.push_back(pid);
+            }
+            else {
+                Kill(pid);
+            }
             _adminLock.Unlock();
         }
         void RemovePid(uint32_t pid) {
@@ -613,15 +623,17 @@ public:
             if (position != _processList.end()) {
                 _processList.erase(position);
             }
+            if (_processList.empty() == true) {
+                _waitEvent.SetEvent();
+            }
             _adminLock.Unlock();
         }
         void StopChilds() {
             _adminLock.Lock();
             ASSERT(!_processList.empty())
             for (int i = 1; i < _processList.size(); i++) {
-                Kill(_processList[i];);
+                Kill(_processList[i]);
             }
-            _processList.clear(); //Clear to ensure it is removed before doing the force shutdown
             _adminLock.Unlock();
         }
         void Schedule (const Core::Time& time) {
@@ -638,7 +650,7 @@ public:
             _adminLock.Unlock();
 
             (PluginHost::WorkerPool::Instance().Revoke(Core::ProxyType<Core::IDispatch>(*this)));
-
+            _waitEvent.ResetEvent();
             if (_process.IsActive() == true) {
 
                 // First try a gentle touch....
@@ -651,6 +663,10 @@ public:
                    _process.WaitProcessCompleted(1000);
                }
                StopChilds(); //Ensure all childs are exited before quiting
+               if (_waitEvent.Lock(1000) != Core::ERROR_NONE) {
+                   TRACE_L1("Child list are not yet cleared\n");
+                   _processList.clear();
+               }
             }
         }
 
@@ -693,6 +709,7 @@ public:
         uint8_t _closeTime;
         uint8_t _shutdownPhase;
         ProcessList _processList;
+        Core::Event _waitEvent;
     };
 
 public:
