@@ -3,6 +3,7 @@
 #include "Module.h"
 #include <interfaces/IMemory.h>
 #include <linux/cn_proc.h>
+#include <vector>
 
 namespace WPEFramework {
 namespace Plugin {
@@ -544,6 +545,8 @@ public:
         Job(const Job&) = delete;
         Job& operator=(const Job&) = delete;
 
+        typedef std::vector<uint32_t> ProcessList;
+
     public:
         Job(Config* config, const Time& interval, Exchange::IMemory* memory)
             : _adminLock()
@@ -586,6 +589,41 @@ public:
         uint32_t Pid() {
             return _pid;
         }
+        bool ShutdownInProgress() {
+            return _shutdownPhase;
+        }
+        void Kill(uint32_t pid) {
+           ::kill(pid, SIGKILL);
+        }
+        bool HasPid(uint32_t pid) {
+           _adminLock.Lock();
+           ProcessList::iterator position = std::find(_processList.begin(), _processList.end(), pid);
+           _adminLock.Unlock();
+           return (position != _processList.end());
+        }
+        void AddPid(uint32_t pid) {
+            _adminLock.Lock();
+            ASSERT(std::find(_processList.begin(), _processList.end(), pid) == _processList.end());
+            _processList.push_back(pid);
+            _adminLock.Unlock();
+        }
+        void RemovePid(uint32_t pid) {
+            _adminLock.Lock();
+            ProcessList::iterator position = std::find(_processList.begin(), _processList.end(), pid);
+            if (position != _processList.end()) {
+                _processList.erase(position);
+            }
+            _adminLock.Unlock();
+        }
+        void StopChilds() {
+            _adminLock.Lock();
+            ASSERT(!_processList.empty())
+            for (int i = 1; i < _processList.size(); i++) {
+                Kill(_processList[i];);
+            }
+            _processList.clear(); //Clear to ensure it is removed before doing the force shutdown
+            _adminLock.Unlock();
+        }
         void Schedule (const Core::Time& time) {
             if (time <= Core::Time::Now()) {
                 PluginHost::WorkerPool::Instance().Submit(Core::ProxyType<Core::IDispatch>(*this));
@@ -599,7 +637,7 @@ public:
             _shutdownPhase = 1;
             _adminLock.Unlock();
 
-            PluginHost::WorkerPool::Instance().Revoke(Core::ProxyType<Core::IDispatch>(*this));
+            (PluginHost::WorkerPool::Instance().Revoke(Core::ProxyType<Core::IDispatch>(*this)));
 
             if (_process.IsActive() == true) {
 
@@ -608,9 +646,11 @@ public:
 
                // Wait for a maximum configured wait time before we shoot the process!!
                if (_process.WaitProcessCompleted(_closeTime * 1000) != Core::ERROR_NONE) {
+                   TRACE_L1("Trying to force kill\n");
                    _process.Kill(true);
                    _process.WaitProcessCompleted(1000);
                }
+               StopChilds(); //Ensure all childs are exited before quiting
             }
         }
 
@@ -624,6 +664,7 @@ public:
             if (_process.IsActive() == false) {
 
                 _process.Launch(_options, &_pid);
+                AddPid(_pid);
 
                 TRACE(Trace::Information, (_T("Launched command: %s [%d]."), _options.Command().c_str(), _pid));
                 ASSERT (_memory != nullptr);
@@ -651,6 +692,7 @@ public:
         Time _interval;
         uint8_t _closeTime;
         uint8_t _shutdownPhase;
+        ProcessList _processList;
     };
 
 public:

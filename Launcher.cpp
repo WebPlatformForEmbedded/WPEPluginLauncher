@@ -59,9 +59,9 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
     ASSERT(_activity.IsValid() == true);
 
     _memory->Observe(0);
-    _observer.Unregister(&_notification);
 
     _activity->Shutdown();
+    _observer.Unregister(&_notification);
     _activity.Release();
 
     _memory->Release();
@@ -84,21 +84,47 @@ void Launcher::Update(const ProcessObserver::Info& info)
 
     // This can potentially be called on a socket thread, so the deactivation (wich in turn kills this object) must be done
     // on a seperate thread. Also make sure this call-stack can be unwound before we are totally destructed.
-    if ( (_activity->Pid() == info.Id()) && (info.Event() == ProcessObserver::Info::EVENT_EXIT) ) { 
+    if (_activity->HasPid(info.Id()) == true) {
 
-        _memory->Observe(0);
-        uint32_t result = _activity->ExitCode();
+        switch (info.Event()) {
+        case ProcessObserver::Info::EVENT_FORK:
+            TRACE(Trace::Information, (_T("FORK: parent tid=%d pid=%d -> child tid=%d pid=%d\n"), info.Id(), info.Group(), info.ChildId(), info.ChildGroup()));
+            if (_activity->ShutdownInProgress() == false) {
+                _activity->AddPid(info.ChildId());
+            } else {
+                _activity->Kill(info.ChildId());
+            }
+            break;
+        case ProcessObserver::Info::EVENT_EXEC:
+            TRACE(Trace::Information, (_T("EXEC: tid=%d pid=%d\n"), info.Id(), info.Group()));
+            break;
+        case ProcessObserver::Info::EVENT_EXIT:
+        {
+            if (_activity->Pid() == info.Id()) {
+                _memory->Observe(0);
+                uint32_t result = _activity->ExitCode();
 
-        if (result != Core::ERROR_NONE) {
-            SYSLOG(Trace::Fatal, (_T("FORCED Shutdown: %s by error: %d."), _service->Callsign().c_str(), result));
-            PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
+                if (result != Core::ERROR_NONE) {
+                    SYSLOG(Trace::Fatal, (_T("FORCED Shutdown: %s by error: %d."), _service->Callsign().c_str(), result));
+                    if (_activity->ShutdownInProgress() == false) {
+                        PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
+                    }
+                }
+                else if (_activity->Continuous() == false) {
+                    TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, deactivation requested."), _service->Callsign().c_str()));
+                    PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::AUTOMATIC));
+                }
+                else {
+                    TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, scheduled for the next run."), _service->Callsign().c_str()));
+                }
+            } else {
+                _activity->RemovePid(info.Id());
+            }
+            break;
         }
-        else if (_activity->Continuous() == false) {
-            TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, deactivation requested."), _service->Callsign().c_str()));
-            PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::AUTOMATIC));
-        }
-        else {
-            TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, scheduled for the next run."), _service->Callsign().c_str()));
+        default:
+            printf("unhandled proc event\n");
+            break;
         }
     }
 }
@@ -125,6 +151,7 @@ bool Launcher::ScheduleParameters(const Config& config, string& message, Core::T
         }
         else if ( (timeMode == ABSOLUTE_WITH_INTERVAL) && ((interval.IsValid() == false) || (interval.TimeInSeconds() == 0)) ) {
             message = _T("Requested mode is ABSOLUTE WITH INTERVAL but no interval (or 0 second interval) is given.");
+
         }
         else {
             // All signals green, we have valid input, calculate the ScheduleTime/Interval time
