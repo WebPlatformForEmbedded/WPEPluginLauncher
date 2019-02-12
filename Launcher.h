@@ -658,30 +658,31 @@ public:
 
                // Wait for a maximum configured wait time before we shoot the process!!
                _process.WaitProcessCompleted(_closeTime * 1000);
-
-               // If there was a proper shutdown, all assoicated processes should have left. 
-               // If not, we will start doing it the rude way!!
-               if (_processList.size() != 0) {
-                   _adminLock.Lock();
-                   _shutdownPhase = 2;
-
-                   TRACE_L1("Trying to force kill\n");
-                   for (int i = 0; i < _processList.size(); i++) {
-                       ::kill(_processList[i], SIGKILL);
-                   }
- 
-                   _adminLock.Unlock();
-               }
-
-               if (_processListEmpty.Lock(1000) != Core::ERROR_NONE) {
-                   TRACE(Trace::Fatal, (_T("Could not kill all spawned processes for: %s."), _options.Command().c_str()));
-                   _processList.clear();
-               }
-               _processListEmpty.Unlock();
-               _adminLock.Lock();
-               _shutdownPhase = 0;
-               _adminLock.Unlock();
             }
+
+            // If there was a proper shutdown, all assoicated processes should have left. 
+            // If not, we will start doing it the rude way!!
+            if (_processList.size() != 0) {
+                _adminLock.Lock();
+                _shutdownPhase = 2;
+
+                TRACE_L1("Trying to force kill\n");
+                for (int i = 0; i < _processList.size(); i++) {
+                    ::kill(_processList[i], SIGKILL);
+                }
+ 
+                _adminLock.Unlock();
+            }
+
+            if (_processListEmpty.Lock(1000) != Core::ERROR_NONE) {
+                TRACE(Trace::Fatal, (_T("Could not kill all spawned processes for: %s."), _options.Command().c_str()));
+                _processList.clear();
+            }
+
+            _adminLock.Lock();
+            _processListEmpty.Unlock();            
+            _shutdownPhase = 0;
+            _adminLock.Unlock();
         }
 
     private:
