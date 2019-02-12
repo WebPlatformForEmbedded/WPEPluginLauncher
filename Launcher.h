@@ -557,7 +557,7 @@ public:
             , _interval(interval)
             , _closeTime(config->CloseTime.Value())
             , _shutdownPhase(0)
-            , _waitEvent(true, false)
+            , _processListEmpty(1, 1)
         {
             auto iter = config->Parameters.Elements();
 
@@ -584,57 +584,58 @@ public:
         uint32_t ExitCode() {
             return (_process.IsActive() == false ? _process.ExitCode() : Core::ERROR_NONE);
         }
+        bool IsActive() const {
+            return (_processList.size() > 0);
+        }
         bool Continuous() const {
             return (_interval.IsValid() == true);
         }
         uint32_t Pid() {
-            return _pid;
+            return (_processList.front());
         }
-        bool ShutdownInProgress() {
-            bool status = false;
-            _adminLock.Lock();
-            status = _shutdownPhase;
-            _adminLock.Unlock();
-            return status;
-	}
-        void Kill(uint32_t pid) {
-           ::kill(pid, SIGKILL);
-        }
-        bool HasPid(uint32_t pid) {
-           _adminLock.Lock();
-           ProcessList::iterator position = std::find(_processList.begin(), _processList.end(), pid);
-           _adminLock.Unlock();
-           return (position != _processList.end());
-        }
-        void AddPid(uint32_t pid) {
-            _adminLock.Lock();
-            if (!_shutdownPhase) {
-                ASSERT(std::find(_processList.begin(), _processList.end(), pid) == _processList.end());
-                _processList.push_back(pid);
+        void Update (const ProcessObserver::Info& info) {
+            switch (info.Event()) {
+            case ProcessObserver::Info::EVENT_FORK:
+            {
+                 _adminLock.Lock();
+
+                 ProcessList::iterator position (std::find(_processList.begin(), _processList.end(), info.Id()));
+                 if (position != _processList.end()) {
+                     _processList.push_back(info.ChildId());
+
+                     if (_shutdownPhase == 2) {
+                         ::kill(pid, SIGKILL);
+                     }
+                 }
+
+                 _adminLock.Unlock();
+                 break;
             }
-            else {
-                Kill(pid);
+            case ProcessObserver::Info::EVENT_EXIT:
+            {
+                _adminLock.Lock();
+
+                ProcessList::iterator position (std::find(_processList.begin(), _processList.end(), info.Id()));
+                if (position != _processList.end()) {
+                    _position.erase(position);
+                    if ( (_position.Id() == _pid) && (_process.IsActive() == false) ) {
+                        _memory->Observe(0);
+                    }
+                    else {
+                        // TODO: Probably might need to add the read exit code here for any process that exits to prevent
+                        //       Zombie processes here..
+                    }
+                    if (_position.size() == 0) {
+                        _processListEmpty.Unlock();
+                    }
+                }
+
+                _adminLock.Unlock();
+                break;
             }
-            _adminLock.Unlock();
-        }
-        void RemovePid(uint32_t pid) {
-            _adminLock.Lock();
-            ProcessList::iterator position = std::find(_processList.begin(), _processList.end(), pid);
-            if (position != _processList.end()) {
-                _processList.erase(position);
+            default:
+                break;
             }
-            if (_processList.empty() == true) {
-                _waitEvent.SetEvent();
-            }
-            _adminLock.Unlock();
-        }
-        void StopChilds() {
-            _adminLock.Lock();
-            ASSERT(!_processList.empty())
-            for (int i = 1; i < _processList.size(); i++) {
-                Kill(_processList[i]);
-            }
-            _adminLock.Unlock();
         }
         void Schedule (const Core::Time& time) {
             if (time <= Core::Time::Now()) {
@@ -649,24 +650,37 @@ public:
             _shutdownPhase = 1;
             _adminLock.Unlock();
 
-            (PluginHost::WorkerPool::Instance().Revoke(Core::ProxyType<Core::IDispatch>(*this)));
-            _waitEvent.ResetEvent();
+            PluginHost::WorkerPool::Instance().Revoke(Core::ProxyType<Core::IDispatch>(*this));
             if (_process.IsActive() == true) {
 
                 // First try a gentle touch....
                 _process.Kill(false);
 
                // Wait for a maximum configured wait time before we shoot the process!!
-               if (_process.WaitProcessCompleted(_closeTime * 1000) != Core::ERROR_NONE) {
+               _process.WaitProcessCompleted(_closeTime * 1000);
+
+               // If there was a proper shutdown, all assoicated processes should have left. 
+               // If not, we will start doing it the rude way!!
+               if (_processList.size() != 0) {
+                   _adminLock.Lock();
+                   _shutdownPhase = 2;
+
                    TRACE_L1("Trying to force kill\n");
-                   _process.Kill(true);
-                   _process.WaitProcessCompleted(1000);
+                   for (int i = 0; i < _processList.size(); i++) {
+                       ::kill(_processList[i], SIGKILL);
+                   }
+ 
+                   _adminLock.Unlock();
                }
-               StopChilds(); //Ensure all childs are exited before quiting
-               if (_waitEvent.Lock(1000) != Core::ERROR_NONE) {
-                   TRACE_L1("Child list are not yet cleared\n");
+
+               if (_processListEmpty.Lock(1000) != Core::ERROR_NONE) {
+                   TRACE(Trace::Fatal, (_T("Could not kill all spawned processes for: %s."), _options.Command().c_str()));
                    _processList.clear();
                }
+               _processListEmpty.Unlock();
+               _adminLock.Lock();
+               _shutdownPhase = 0;
+               _adminLock.Unlock();
             }
         }
 
@@ -677,15 +691,18 @@ public:
             Core::Time nextRun (Core::Time::Now());
 
              // Check if the process is not active, no need to reschedule the same job again.
-            if (_process.IsActive() == false) {
+            if ( (_process.IsActive() == false) && (_shutdownCompleted.Lock(0) != Core::ERROR_NONE) ) {
 
-                _process.Launch(_options, &_pid);
-                AddPid(_pid);
+                ASSERT (_processList.size() == 0);
 
-                TRACE(Trace::Information, (_T("Launched command: %s [%d]."), _options.Command().c_str(), _pid));
+                _processList.push_back(0);
+
+                _process.Launch(_options, &_processList.front());
+
+                TRACE(Trace::Information, (_T("Launched command: %s [%d]."), _options.Command().c_str(), Pid()));
                 ASSERT (_memory != nullptr);
 
-                _memory->Observe(_pid);
+                _memory->Observe(Pid());
             }
 
             if (_interval.IsValid() == true) {
@@ -701,7 +718,6 @@ public:
 
     private:
         Core::CriticalSection _adminLock;
-        uint32_t _pid;
         Core::Process::Options _options;
         Core::Process _process;
         Exchange::IMemory* _memory;
@@ -709,7 +725,7 @@ public:
         uint8_t _closeTime;
         uint8_t _shutdownPhase;
         ProcessList _processList;
-        Core::Event _waitEvent;
+        Core::BinairySamaphore _shutdownCompleted;
     };
 
 public:

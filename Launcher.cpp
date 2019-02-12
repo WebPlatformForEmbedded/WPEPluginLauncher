@@ -84,43 +84,27 @@ void Launcher::Update(const ProcessObserver::Info& info)
 
     // This can potentially be called on a socket thread, so the deactivation (wich in turn kills this object) must be done
     // on a seperate thread. Also make sure this call-stack can be unwound before we are totally destructed.
-    if (_activity->HasPid(info.Id()) == true) {
+    if (_activity->IsActive() == true) {
 
-        switch (info.Event()) {
-        case ProcessObserver::Info::EVENT_FORK:
-            TRACE(Trace::Information, (_T("FORK: parent tid=%d pid=%d -> child tid=%d pid=%d\n"), info.Id(), info.Group(), info.ChildId(), info.ChildGroup()));
-            _activity->AddPid(info.ChildId());
-            break;
-        case ProcessObserver::Info::EVENT_EXEC:
-            TRACE(Trace::Information, (_T("EXEC: tid=%d pid=%d\n"), info.Id(), info.Group()));
-            break;
-        case ProcessObserver::Info::EVENT_EXIT:
-        {
-            if (_activity->Pid() == info.Id()) {
-                _memory->Observe(0);
-                uint32_t result = _activity->ExitCode();
+        _activity->Update(info);
 
-                if (result != Core::ERROR_NONE) {
+        if (_activity->IsActive() == false) {
+            uint32_t result = _activity->ExitCode();
+
+            if (result != Core::ERROR_NONE) {
+                if (_deactivationInProgress == false) {
+                    _deactivationInProgress = true;
                     SYSLOG(Trace::Fatal, (_T("FORCED Shutdown: %s by error: %d."), _service->Callsign().c_str(), result));
-                    if (_activity->ShutdownInProgress() == false) {
-                        PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
-                    }
+                    PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
                 }
-                else if (_activity->Continuous() == false) {
-                    TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, deactivation requested."), _service->Callsign().c_str()));
-                    PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::AUTOMATIC));
-                }
-                else {
-                    TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, scheduled for the next run."), _service->Callsign().c_str()));
-                }
-            } else {
-                _activity->RemovePid(info.Id());
             }
-            break;
-        }
-        default:
-            printf("unhandled proc event\n");
-            break;
+            else if (_activity->Continuous() == false) {
+                TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, deactivation requested."), _service->Callsign().c_str()));
+                PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::AUTOMATIC));
+            }
+            else {
+                TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, scheduled for the next run."), _service->Callsign().c_str()));
+            }
         }
     }
 }
