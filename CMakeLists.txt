@@ -1,26 +1,22 @@
-cmake_minimum_required(VERSION 3.7)
+cmake_minimum_required(VERSION 3.3)
 
-include(${CMAKE_SYSROOT}/usr/include/cmake/WPEFramework.cmake)
+project(Launcher)
+
+find_package(WPEFramework)
 
 set(PLUGIN_NAME Launcher)
 set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
 
-message("Setting up ${PLUGIN_NAME}")
+find_package(${NAMESPACE}Plugins REQUIRED)
 
-# This is a plugin so we need the Plugin configuration section.
-find_package(Plugins REQUIRED)
-
-set(PLUGIN_SOURCES
+add_library(${MODULE_NAME} SHARED
     Launcher.cpp
     Module.cpp)
 
-# Library definition section
-add_library(${MODULE_NAME} SHARED ${PLUGIN_SOURCES})
-add_compiler_flags(${MODULE_NAME} "${PLUGINS_DEFINITIONS}")
-include_directories(${PLUGINS_INCLUDE_DIR})
-target_link_libraries(${MODULE_NAME} ${PLUGINS_LIBRARIES})
+target_link_libraries(${MODULE_NAME} 
+        PRIVATE 
+            ${NAMESPACE}Plugins::${NAMESPACE}Plugins)
 
-# Library installation section
 string(TOLOWER ${NAMESPACE} STORAGENAME)
 install(TARGETS ${MODULE_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/${STORAGENAME}/plugins)
 
