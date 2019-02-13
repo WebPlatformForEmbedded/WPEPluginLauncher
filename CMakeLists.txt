@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.3)
 
 project(Launcher)
 
-include(${CMAKE_SYSROOT}/usr/include/cmake/WPEFramework.cmake)
+find_package(WPEFramework)
 
 set(PLUGIN_NAME Launcher)
 set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
