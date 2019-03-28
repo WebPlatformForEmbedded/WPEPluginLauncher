@@ -174,10 +174,10 @@ public:
     public:
         void Register(IProcessState* observer) {
             _adminLock.Lock();
-            auto found = std::find(_callbacks.begin(), _callbacks.end(), observer);
-            ASSERT(found == _callbacks.end());
+            ASSERT (std::find(_callbacks.begin(), _callbacks.end(), observer) == _callbacks.end());
             if (_callbacks.empty()) {
                 const bool opened = Open();
+                DEBUG_VARIABLE(opened);
                 ASSERT(opened);
             }
             _callbacks.push_back(observer);
@@ -667,7 +667,7 @@ public:
                 _shutdownPhase = 2;
 
                 TRACE_L1("Trying to force kill\n");
-                for (int i = 0; i < _processList.size(); i++) {
+                for (int i = 0; i < static_cast<int>(_processList.size()); i++) {
                     ::kill(_processList[i], SIGKILL);
                 }
  
