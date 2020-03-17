@@ -566,10 +566,11 @@ public:
 
                 if ((element.Option.IsSet() == true) && (element.Option.Value().empty() == false)) {
                     if ((element.Value.IsSet() == true) && (element.Value.Value().empty() == false)) {
-                        _options.Set(element.Option.Value(), element.Value.Value());
+                        _options.Add(element.Option.Value());
+                        _options.Add(element.Value.Value());
                     }
                     else {
-                        _options.Set(element.Option.Value());
+                        _options.Add(element.Option.Value());
                     }
                 }
             }
@@ -618,13 +619,6 @@ public:
                 ProcessList::iterator position (std::find(_processList.begin(), _processList.end(), info.Id()));
                 if (position != _processList.end()) {
                     _processList.erase(position);
-                    if ( (info.Id() ==_processList.front()) && (_process.IsActive() == false) ) {
-                        _memory->Observe(0);
-                    }
-                    else {
-                        // TODO: Probably might need to add the read exit code here for any process that exits to prevent
-                        //       Zombie processes here..
-                    }
                     if (_processList.size() == 0) {
                         _processListEmpty.Unlock();
                     }
@@ -703,7 +697,6 @@ public:
                 TRACE(Trace::Information, (_T("Launched command: %s [%d]."), _options.Command().c_str(), Pid()));
                 ASSERT (_memory != nullptr);
 
-                _memory->Observe(Pid());
                 _shutdownCompleted.Unlock();
             }
 

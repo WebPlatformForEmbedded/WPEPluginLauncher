@@ -61,8 +61,6 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
 
     _deactivationInProgress = true;
 
-    _memory->Observe(0);
-
     _activity->Shutdown();
     _observer.Unregister(&_notification);
     _activity.Release();
