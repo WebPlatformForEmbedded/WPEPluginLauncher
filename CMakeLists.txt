@@ -4,8 +4,7 @@ project(Launcher)
 
 find_package(WPEFramework)
 
-set(PLUGIN_NAME Launcher)
-set(MODULE_NAME ${NAMESPACE}${PLUGIN_NAME})
+set(MODULE_NAME ${NAMESPACE}${PROJECT_NAME})
 
 find_package(${NAMESPACE}Plugins REQUIRED)
 
@@ -20,4 +19,4 @@ target_link_libraries(${MODULE_NAME}
 string(TOLOWER ${NAMESPACE} STORAGENAME)
 install(TARGETS ${MODULE_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/${STORAGENAME}/plugins)
 
-write_config(${PLUGIN_NAME})
+write_config()
