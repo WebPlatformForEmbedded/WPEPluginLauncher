@@ -53,7 +53,7 @@ SERVICE_REGISTRATION(Launcher, 1, 0);
     return (message);
 }
 
-/* virtual */ void Launcher::Deinitialize(PluginHost::IShell* service)
+/* virtual */ void Launcher::Deinitialize(PluginHost::IShell* /* service */)
 {
     ASSERT(_service == service);
     ASSERT(_memory != nullptr);

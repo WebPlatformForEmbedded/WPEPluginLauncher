@@ -110,7 +110,7 @@ public:
             inline uint32_t GroupId () const {
                 return((Event() == EVENT_UID) || (Event() == EVENT_GID) ? _info.event_data.id.e.egid : 0);
             }
-            virtual uint16_t Message(uint8_t stream[], const uint16_t length) const override { 
+            virtual uint16_t Message(uint8_t stream[], const uint16_t /* length */) const override { 
     
                 memcpy(stream, &_status, sizeof(_status)); 
     
@@ -539,15 +539,15 @@ public:
     };
 
 public:
-    class Job: public Core::IDispatchType<void> {
+    class Job: public Core::IDispatch {
     private:
+        typedef std::vector<uint32_t> ProcessList;
+
+    public:
         Job() = delete;
         Job(const Job&) = delete;
         Job& operator=(const Job&) = delete;
 
-        typedef std::vector<uint32_t> ProcessList;
-
-    public:
         Job(Config* config, const Time& interval, Exchange::IMemory* memory)
             : _adminLock()
             , _options(config->Command.Value().c_str())
@@ -576,14 +576,14 @@ public:
             }
             _memory->AddRef();
         }
-        ~Job()
+        ~Job() override
         {
             _memory->Release();
         }
 
     public:
         uint32_t ExitCode() {
-            return (_process.IsActive() == false ? _process.ExitCode() : Core::ERROR_NONE);
+            return (_process.IsActive() == false ? _process.ExitCode() : static_cast<uint32_t>(Core::ERROR_NONE));
         }
         bool IsActive() const {
             return (_processList.size() > 0);
@@ -681,7 +681,10 @@ public:
         }
 
     private:
-        virtual void Dispatch() override
+        string Identifier() const override {
+            return (_T("Launcher::Command(\"") + _options.Command() + _T("\")"));
+        }
+        void Dispatch() override
         {
             // Let limit the jitter on the next run, if required..
             Core::Time nextRun (Core::Time::Now());
