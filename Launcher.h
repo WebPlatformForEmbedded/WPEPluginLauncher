@@ -417,24 +417,27 @@ public:
         Time()
         : _hour(~0)
         , _minute(~0)
-        , _second(~0)
-        {
+        , _second(~0) {
         }
         Time(const string& time) 
         : _hour(~0) 
         , _minute(~0)
-        , _second(~0)
-        {
+        , _second(~0) {
             Parse(time);
         }
         Time(const Time& copy) 
         : _hour(copy._hour) 
         , _minute(copy._minute)
-        , _second(copy._second)
-        {
+        , _second(copy._second) {
         }
-        ~Time ()
-        {
+        ~Time () = default;
+
+        Time& operator= (const Time& rhs) {
+            _hour = rhs._hour; 
+            _minute = rhs._minute;
+            _second = rhs._second;
+
+            return (*this);
         }
 
         static constexpr uint32_t MilliSecondsPerSecond = 1000;
