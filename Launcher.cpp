@@ -13,7 +13,19 @@ ENUM_CONVERSION_BEGIN(Plugin::Launcher::mode)
 ;
 namespace Plugin {
 
-SERVICE_REGISTRATION(Launcher, 1, 0);
+    namespace {
+
+        static Metadata<Launcher> metadata(
+            // Version
+            1, 0, 0,
+            // Preconditions
+            {},
+            // Terminations
+            {},
+            // Controls
+            {}
+        );
+    }
 
 /* static */ Launcher::ProcessObserver Launcher::_observer;
 
