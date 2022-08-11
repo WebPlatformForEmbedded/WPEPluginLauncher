@@ -27,11 +27,6 @@ public:
 
     public:
         class Info : public Core::ConnectorType<CN_IDX_PROC,CN_VAL_PROC> {
-        private:
-            Info() = delete;
-            Info(const Info&) = delete;
-            Info& operator= (const Info&) = delete;
-
         public:
             enum event {
                 EVENT_NONE = proc_event::PROC_EVENT_NONE,
@@ -43,10 +38,14 @@ public:
             };
 
         public:
+            Info() = delete;
+            Info(const Info&) = delete;
+            Info& operator= (const Info&) = delete;
+
             Info(const uint8_t buffer[], const uint16_t length) 
                 : _status(PROC_CN_MCAST_IGNORE) {
                 if (Ingest(buffer, length) == false) {
-                    TRACE_L1("This failed !!!!\n");
+                    TRACE(Trace::Fatal, (_T("Could not observe the process!!!")));
                     _info.what = proc_event::PROC_EVENT_NONE;
                 }
             }
@@ -54,8 +53,7 @@ public:
                 : _status(enabled ? PROC_CN_MCAST_LISTEN : PROC_CN_MCAST_IGNORE) {
                 _info.what = proc_event::PROC_EVENT_NONE;
             }
-            virtual ~Info() {
-            }
+            ~Info() override = default;
 
         public:
             inline event Event() const {
@@ -110,13 +108,13 @@ public:
             inline uint32_t GroupId () const {
                 return((Event() == EVENT_UID) || (Event() == EVENT_GID) ? _info.event_data.id.e.egid : 0);
             }
-            virtual uint16_t Message(uint8_t stream[], const uint16_t /* length */) const override { 
+            uint16_t Message(uint8_t stream[], const uint16_t /* length */) const override { 
     
                 memcpy(stream, &_status, sizeof(_status)); 
     
                 return (sizeof(_status)); 
             } 
-            virtual uint16_t Message(const uint8_t stream[], const uint16_t length) override { 
+            uint16_t Message(const uint8_t stream[], const uint16_t length) override { 
                 uint16_t toCopy = (length >= sizeof(proc_event) ? sizeof(proc_event) : length);
                 ::memcpy(&_info, stream, toCopy);
                 if (toCopy < sizeof(proc_event)) {
@@ -131,18 +129,16 @@ public:
         };
 
         class Channel : public Core::SocketNetlink {
-        private:
+        public:
             Channel() = delete;
             Channel(const Channel&) = delete;
             Channel& operator= (const Channel&) = delete;
 
-        public:
             Channel(ProcessObserver& parent) 
                 : Core::SocketNetlink(Core::NodeId(NETLINK_CONNECTOR, 0, CN_IDX_PROC))
                 , _parent(parent) {
             }
-            virtual ~Channel() {
-            }
+            ~Channel() override = default;
 
         private:
             virtual uint16_t Deserialize (const uint8_t dataFrame[], const uint16_t receivedSize) {
@@ -250,10 +246,7 @@ public:
         {
             ASSERT(parent != nullptr);
         }
-        virtual ~Notification()
-        {
-            TRACE_L1("Launcher::Notification destructed. Line: %d", __LINE__);
-        }
+        ~Notification() override = default;
 
     public:
         void Update(const ProcessObserver::Info& info) override {
@@ -489,7 +482,7 @@ public:
 
                         //Check all the time components are still valid
                         if ((hour != static_cast<uint8_t>(~0) && second != static_cast<uint8_t>(~0)) && (minute == static_cast<uint8_t>(~0))) {
-                            TRACE_L1(_T("Invalid time format: the given format is HH:.SS"));
+                            TRACE(Trace::Information, (_T("Invalid time format: the given format is HH:MM.SS")));
                         }
                         else { //Update time components
                             _hour = hour;
@@ -663,7 +656,7 @@ public:
                 _adminLock.Lock();
                 _shutdownPhase = 2;
 
-                TRACE_L1("Trying to force kill\n");
+                TRACE(Trace::Information, (_T("Trying to force kill.")));
                 for (int i = 0; i < static_cast<int>(_processList.size()); i++) {
                     ::kill(_processList[i], SIGKILL);
                 }

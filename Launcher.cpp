@@ -67,7 +67,7 @@ namespace Plugin {
 
 /* virtual */ void Launcher::Deinitialize(PluginHost::IShell* /* service */)
 {
-    ASSERT(_service == service);
+    ASSERT(_service != nullptr);
     ASSERT(_memory != nullptr);
     ASSERT(_activity.IsValid() == true);
 
