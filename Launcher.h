@@ -535,7 +535,7 @@ public:
     };
 
 public:
-    class Job: public Core::IDispatch {
+    class Job {
     private:
         typedef std::vector<uint32_t> ProcessList;
 
@@ -554,6 +554,7 @@ public:
             , _shutdownPhase(0)
             , _processListEmpty(1, 1)
             , _shutdownCompleted(false)
+            , _job(*this)
         {
             auto iter = config->Parameters.Elements();
 
@@ -572,8 +573,9 @@ public:
             }
             _memory->AddRef();
         }
-        ~Job() override
+        ~Job()
         {
+            _job.Revoke();
             _memory->Release();
         }
 
@@ -629,10 +631,10 @@ public:
         }
         void Schedule (const Core::Time& time) {
             if (time <= Core::Time::Now()) {
-                PluginHost::WorkerPool::Instance().Submit(Core::ProxyType<Core::IDispatch>(*this));
+                _job.Submit();
             }
             else {
-                PluginHost::WorkerPool::Instance().Schedule(time, Core::ProxyType<Core::IDispatch>(*this));
+                _job.Reschedule(time);
             }
         }
         void Shutdown () {
@@ -640,7 +642,7 @@ public:
             _shutdownPhase = 1;
             _adminLock.Unlock();
 
-            PluginHost::WorkerPool::Instance().Revoke(Core::ProxyType<Core::IDispatch>(*this));
+            _job.Revoke();
             if (_process.IsActive() == true) {
 
                 // First try a gentle touch....
@@ -677,11 +679,10 @@ public:
         }
 
     private:
-        string Identifier() const override {
-            return (_T("Launcher::Command(\"") + _options.Command() + _T("\")"));
-        }
-        void Dispatch() override
+        friend Core::ThreadPool::JobType<Job&>;
+        void Dispatch()
         {
+            TRACE(Trace::Information, (_T("Launcher: job is dispatched")));
             // Let limit the jitter on the next run, if required..
             Core::Time nextRun (Core::Time::Now());
 
@@ -704,7 +705,7 @@ public:
                 if (_shutdownPhase == 0) {
                     // Reschedule our next launch point...
                     nextRun.Add(_interval.TimeInSeconds() * Time::MilliSecondsPerSecond);
-                    PluginHost::WorkerPool::Instance().Schedule(nextRun, Core::ProxyType<Core::IDispatch>(*this));
+                    _job.Reschedule(nextRun);
                 }
                 _adminLock.Unlock();
             }
@@ -721,6 +722,8 @@ public:
         ProcessList _processList;
         Core::Event _processListEmpty;
         Core::BinairySemaphore _shutdownCompleted;
+
+        Core::WorkerPool::JobType<Job&> _job;
     };
 
 public:
