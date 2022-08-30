@@ -679,6 +679,11 @@ public:
         }
 
     private:
+        string JobIdentifier() const
+        {
+            return (_T("Launcher::Command(\"") + _options.Command() + _T("\")"));
+        }
+
         friend Core::ThreadPool::JobType<Job&>;
         void Dispatch()
         {
