@@ -108,14 +108,14 @@ void Launcher::Update(const ProcessObserver::Info& info)
                 if (_deactivationInProgress == false) {
                     _deactivationInProgress = true;
                     SYSLOG(Logging::Fatal, (_T("FORCED Shutdown: %s by error: %d."), _service->Callsign().c_str(), result));
-                    PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
+                    Core::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::FAILURE));
                 }
             }
             else if (_activity->Continuous() == false) {
                 if (_deactivationInProgress == false) {
                     _deactivationInProgress = true;
                     TRACE(Trace::Information, (_T("Launcher [%s] has run succesfully, deactivation requested."), _service->Callsign().c_str()));
-                    PluginHost::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::AUTOMATIC));
+                    Core::WorkerPool::Instance().Submit(PluginHost::IShell::Job::Create(_service, PluginHost::IShell::DEACTIVATED, PluginHost::IShell::AUTOMATIC));
                 }
             }
             else {
