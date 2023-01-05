@@ -42,6 +42,7 @@ namespace Plugin {
 
     // Setup skip URL for right offset.
     _service = service;
+    _service->AddRef();
     _deactivationInProgress = false;
 
     config.FromString(_service->ConfigLine());
@@ -67,19 +68,21 @@ namespace Plugin {
 
 /* virtual */ void Launcher::Deinitialize(PluginHost::IShell* /* service */)
 {
-    ASSERT(_service != nullptr);
-    ASSERT(_memory != nullptr);
-    ASSERT(_activity.IsValid() == true);
+    if (_service != nullptr) {
+        ASSERT(_memory != nullptr);
+        ASSERT(_activity.IsValid() == true);
 
-    _deactivationInProgress = true;
+        _deactivationInProgress = true;
 
-    _activity->Shutdown();
-    _observer.Unregister(&_notification);
-    _activity.Release();
+        _activity->Shutdown();
+        _observer.Unregister(&_notification);
+        _activity.Release();
 
-    _memory->Release();
-    _memory = nullptr;
-    _service = nullptr;
+        _memory->Release();
+        _memory = nullptr;
+        _service->Release();
+        _service = nullptr;
+    }
 }
 
 /* virtual */ string Launcher::Information() const
