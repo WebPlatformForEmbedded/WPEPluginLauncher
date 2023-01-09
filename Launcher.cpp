@@ -41,16 +41,16 @@ namespace Plugin {
     ASSERT(_activity.IsValid() == false);
 
     // Setup skip URL for right offset.
-    _service = service;
-    _service->AddRef();
-    _deactivationInProgress = false;
-
-    config.FromString(_service->ConfigLine());
+    config.FromString(service->ConfigLine());
 
     if ((config.Command.IsSet() == false) || (config.Command.Value().empty() == true)) {
         message = _T("Command is not set");
     }
     else if (ScheduleParameters(config, message, scheduleTime, interval) == true) {
+        _service = service;
+        _service->AddRef();
+        _deactivationInProgress = false;
+
         _memory = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(0);
         ASSERT(_memory != nullptr);
 
