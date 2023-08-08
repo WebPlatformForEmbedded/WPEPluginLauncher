@@ -6,6 +6,10 @@ find_package(WPEFramework)
 
 set(MODULE_NAME ${NAMESPACE}${PROJECT_NAME})
 
+if(BUILD_REFERENCE)
+    add_definitions(-DBUILD_REFERENCE=${BUILD_REFERENCE})
+endif()
+
 find_package(${NAMESPACE}Plugins REQUIRED)
 
 add_library(${MODULE_NAME} SHARED
