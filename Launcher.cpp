@@ -9,8 +9,8 @@ ENUM_CONVERSION_BEGIN(Plugin::Launcher::mode)
     { Plugin::Launcher::mode::ABSOLUTE, _TXT("absolute") },
     { Plugin::Launcher::mode::ABSOLUTE_WITH_INTERVAL, _TXT("interval") },
 
-    ENUM_CONVERSION_END(Plugin::Launcher::mode)
-;
+ENUM_CONVERSION_END(Plugin::Launcher::mode)
+
 namespace Plugin {
 
     namespace {
