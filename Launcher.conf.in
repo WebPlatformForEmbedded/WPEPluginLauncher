@@ -1,1 +1,1 @@
-autostart = "true"
+startmode = "@PLUGIN_LAUNCHER_STARTMODE@"
