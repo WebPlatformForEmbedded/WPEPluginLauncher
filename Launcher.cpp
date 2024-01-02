@@ -51,7 +51,7 @@ namespace Plugin {
         _service->AddRef();
         _deactivationInProgress = false;
 
-        _memory = Core::Service<MemoryObserverImpl>::Create<Exchange::IMemory>(0);
+        _memory = Core::ServiceType<MemoryObserverImpl>::Create<Exchange::IMemory>(0);
         ASSERT(_memory != nullptr);
 
         _activity = Core::ProxyType<Job>::Create(&config, interval, _memory);
