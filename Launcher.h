@@ -784,7 +784,7 @@ private:
 private:
     PluginHost::IShell* _service;
     Exchange::IMemory* _memory;
-    Core::Sink<Notification> _notification;
+    Core::SinkType<Notification> _notification;
     Core::ProxyType<Job> _activity;
     bool _deactivationInProgress;
 
