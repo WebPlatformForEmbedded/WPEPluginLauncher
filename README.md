@@ -16,7 +16,7 @@ Plugin to "Launch" linux applications and scripts
      "precondition":[
        "Platform"
      ],
-     "startmode":"activated"
+     "startmode":"Activated"
    }
    ```
  
@@ -30,7 +30,7 @@ Plugin to "Launch" linux applications and scripts
       "precondition":[
         "Platform"
       ],
-      "startmode":"activated",
+      "startmode":"Activated",
       "configuration": {
         "command":"du"
       }
@@ -47,7 +47,7 @@ Plugin to "Launch" linux applications and scripts
       "precondition":[
         "Platform"
       ],
-      "startmode":"activated",
+      "startmode":"Activated",
       "configuration": {
         "command":"du",
         "parameters": [
@@ -144,7 +144,7 @@ Note:
       "precondition":[
         "Platform"
       ],
-      "startmode":"activated",
+      "startmode":"Activated",
       "configuration": {
         "command":"du",
         "closetime":5

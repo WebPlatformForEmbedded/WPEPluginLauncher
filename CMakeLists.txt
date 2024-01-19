@@ -10,7 +10,7 @@ if(BUILD_REFERENCE)
     add_definitions(-DBUILD_REFERENCE=${BUILD_REFERENCE})
 endif()
 
-set(PLUGIN_LAUNCHER_STARTMODE "activated" CACHE STRING "Automatically start the plugin")
+set(PLUGIN_LAUNCHER_STARTMODE "Activated" CACHE STRING "Automatically start the plugin")
 find_package(${NAMESPACE}Plugins REQUIRED)
 
 add_library(${MODULE_NAME} SHARED
