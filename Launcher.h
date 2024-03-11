@@ -3,6 +3,7 @@
 #include "Module.h"
 #include <interfaces/IMemory.h>
 #include <linux/cn_proc.h>
+#include <linux/version.h>
 #include <vector>
 
 namespace WPEFramework {
@@ -27,14 +28,20 @@ public:
 
     public:
         class Info : public Core::ConnectorType<CN_IDX_PROC,CN_VAL_PROC> {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+            using ProcEvent = proc_cn_event;
+#else
+            using ProcEvent = proc_event;
+#endif
+
         public:
             enum event {
-                EVENT_NONE = proc_event::PROC_EVENT_NONE,
-                EVENT_FORK = proc_event::PROC_EVENT_FORK,
-                EVENT_EXEC = proc_event::PROC_EVENT_EXEC,
-                EVENT_UID  = proc_event::PROC_EVENT_UID,
-                EVENT_GID  = proc_event::PROC_EVENT_GID,
-                EVENT_EXIT = proc_event::PROC_EVENT_EXIT
+                EVENT_NONE = ProcEvent::PROC_EVENT_NONE,
+                EVENT_FORK = ProcEvent::PROC_EVENT_FORK,
+                EVENT_EXEC = ProcEvent::PROC_EVENT_EXEC,
+                EVENT_UID  = ProcEvent::PROC_EVENT_UID,
+                EVENT_GID  = ProcEvent::PROC_EVENT_GID,
+                EVENT_EXIT = ProcEvent::PROC_EVENT_EXIT
             };
 
         public:
@@ -46,12 +53,12 @@ public:
                 : _status(PROC_CN_MCAST_IGNORE) {
                 if (Ingest(buffer, length) == false) {
                     TRACE(Trace::Fatal, (_T("Could not observe the process!!!")));
-                    _info.what = proc_event::PROC_EVENT_NONE;
+                    _info.what = ProcEvent::PROC_EVENT_NONE;
                 }
             }
             Info(const bool enabled) 
                 : _status(enabled ? PROC_CN_MCAST_LISTEN : PROC_CN_MCAST_IGNORE) {
-                _info.what = proc_event::PROC_EVENT_NONE;
+                _info.what = ProcEvent::PROC_EVENT_NONE;
             }
             ~Info() override = default;
 
