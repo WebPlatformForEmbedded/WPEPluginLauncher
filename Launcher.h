@@ -169,17 +169,26 @@ public:
 
     public:
         void Register(IProcessState* observer) {
+            ASSERT(observer != nullptr);
+
             _adminLock.Lock();
-            ASSERT (std::find(_callbacks.begin(), _callbacks.end(), observer) == _callbacks.end());
+            auto found = std::find(_callbacks.begin(), _callbacks.end(), observer);
+            ASSERT (found == _callbacks.end());
+
             if (_callbacks.empty()) {
                 const bool opened = Open();
                 DEBUG_VARIABLE(opened);
                 ASSERT(opened);
             }
-            _callbacks.push_back(observer);
+            if (found == _callbacks.end()) {
+                _callbacks.push_back(observer);
+            }
+
             _adminLock.Unlock();
         }
         void Unregister(IProcessState* observer) {
+            ASSERT(observer != nullptr);
+
             _adminLock.Lock();
             auto found = std::find(_callbacks.begin(), _callbacks.end(), observer);
             ASSERT(found != _callbacks.end());
