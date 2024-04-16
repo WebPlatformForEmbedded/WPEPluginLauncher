@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.3)
 
 project(Launcher)
 
-find_package(WPEFramework)
+find_package(Thunder)
 
 set(MODULE_NAME ${NAMESPACE}${PROJECT_NAME})
 

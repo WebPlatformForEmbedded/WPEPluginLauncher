@@ -1,7 +1,7 @@
 #include "Launcher.h"
 #include <inttypes.h>
 
-namespace WPEFramework {
+namespace Thunder {
 
 ENUM_CONVERSION_BEGIN(Plugin::Launcher::mode)
 
@@ -192,4 +192,4 @@ bool Launcher::ScheduleParameters(const Config& config, string& message, Core::T
  
 } //namespace Plugin
 
-} // namespace WPEFramework
+} // namespace Thunder

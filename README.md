@@ -6,12 +6,12 @@ Plugin to "Launch" linux applications and scripts
 
 ### How to launch a script/application
 
-1. Build launcher plugin. It create /usr/lib/wpeframework/plugins/libWPEFrameworkLauncher.so and /root/etc/WPEFramework/plugins/Launcher.json
+1. Build launcher plugin. It create /usr/lib/thunder/plugins/libThunderLauncher.so and /root/etc/Thunder/plugins/Launcher.json
 
    Generated Launcher.json contains,
    ```
    {
-     "locator":"libWPEFrameworkLauncher.so",
+     "locator":"libThunderLauncher.so",
      "classname":"Launcher",
      "precondition":[
        "Platform"
@@ -25,7 +25,7 @@ Plugin to "Launch" linux applications and scripts
    E.g. to run command < `du -a /etc` >
    ```
    {
-      "locator":"libWPEFrameworkLauncher.so",
+      "locator":"libThunderLauncher.so",
       "classname":"Launcher",
       "precondition":[
         "Platform"
@@ -42,7 +42,7 @@ Plugin to "Launch" linux applications and scripts
    E.g. to run < `du -a /etc -h` >
    ```
    {
-      "locator":"libWPEFrameworkLauncher.so",
+      "locator":"libThunderLauncher.so",
       "classname":"Launcher",
       "precondition":[
         "Platform"
@@ -139,7 +139,7 @@ Note:
 
    ```
    {
-      "locator":"libWPEFrameworkLauncher.so",
+      "locator":"libThunderLauncher.so",
       "classname":"Launcher",
       "precondition":[
         "Platform"
@@ -162,5 +162,5 @@ E.g.
 
 3. Create testapp3.json by copying Launcher.json (cp Launcher.json testapp3.json) and update with proper commands and options/values
 
-4. Run WPEFramework
+4. Run Thunder
 
