@@ -22,6 +22,6 @@ target_link_libraries(${MODULE_NAME}
             ${NAMESPACE}Plugins::${NAMESPACE}Plugins)
 
 string(TOLOWER ${NAMESPACE} STORAGENAME)
-install(TARGETS ${MODULE_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/${STORAGENAME}/plugins)
+install(TARGETS ${MODULE_NAME} DESTINATION ${CMAKE_INSTALL_LIBDIR}/${STORAGENAME}/plugins)
 
 write_config()
