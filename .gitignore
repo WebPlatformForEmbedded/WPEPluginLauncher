@@ -4,4 +4,4 @@ Launcher.json
 Makefile
 cmake_install.cmake
 install_manifest.txt
-libWPEFrameworkLauncher.so
+libThunderLauncher.so
